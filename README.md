@@ -100,7 +100,8 @@ Review results from CI mode are published to [loupe-web](https://github.com/zevo
 
 - `git` (required)
 - `b4` (recommended, falls back to `curl` if unavailable)
-- `curl` (fallback patch download)
+- `curl` (fallback patch download and API queries)
+- `jq` (required for Codex environments; used in curl-based API parsing)
 - `codex` (optional, enables multi-agent modes)
 - QEMU source tree with `scripts/checkpatch.pl` (for style checking)
 

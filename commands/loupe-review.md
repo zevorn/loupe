@@ -97,8 +97,11 @@ Detect the input mode (test the first positional arg):
    ```
    The redirect or response will reveal the actual list (e.g.,
    `lore.kernel.org/linux-riscv/...`). Extract the list name from the
-   resolved URL. If the query fails or the list cannot be determined,
-   fall back to `qemu-devel`.
+   resolved URL. If the query fails or the list cannot be determined:
+   - **Interactive mode**: ask the user which mailing list this
+     Message-Id belongs to.
+   - **CI mode**: exit with error — a bare Message-Id without a
+     resolvable list is not actionable in non-interactive mode.
 5. **Subject search**: Any input that does not match modes 1–4. Join
    **all remaining positional args** as the search string (e.g.,
    `riscv iommu fix` → search keywords `"riscv iommu fix"`).

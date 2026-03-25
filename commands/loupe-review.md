@@ -486,10 +486,9 @@ From the response, extract:
 - `series[0].id` — series ID for further queries
 - `check` — CI check status
 
-If the patch is not found on the primary instance, try the alternative:
-```
-WebFetch: https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>
-```
+If the patch is not found on the primary instance, try the fallback:
+- For `qemu-devel`: use Patchew (`https://patchew.org/api/v1/projects/qemu/series/?message_id=<message-id>`)
+- For other lists: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>`
 
 #### 7b: Collect review comments from Patchwork
 
@@ -656,9 +655,11 @@ This step launches a parallel review if the current mode supports it.
 
 **For claude+codex and codex-dual modes**, launch codex review in background.
 
-Use `$REVIEW_BASE` as the base ref to ensure the review scope matches
-the primary review:
+Use `$REVIEW_BASE` and `$REVIEW_TIP` to ensure the review scope matches
+the primary review exactly.
 
+**If `$REVIEW_TIP` is `HEAD`** (remote modes, or local mode where tip
+is the current HEAD):
 ```bash
 # Use Bash tool with run_in_background=true
 cd <repo_root>
@@ -669,9 +670,20 @@ codex review --base $REVIEW_BASE \
     > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
 ```
 
-This uses the same `$REVIEW_BASE` set in Step 2b (local modes) or
-after Step 5 (remote modes), ensuring Codex reviews exactly the same
-commit range as the primary reviewer.
+**If `$REVIEW_TIP` is NOT `HEAD`** (local commit/range where the target
+is not the current branch tip):
+```bash
+# Generate the diff and feed it to codex exec for review
+cd <repo_root>
+git diff $REVIEW_BASE..$REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
+codex exec "Review the following code diff for bugs, security issues, \
+    and correctness problems. Output findings with [P0-9] severity markers." \
+    < /tmp/loupe-review-<timestamp>/review.diff \
+    > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
+```
+
+This ensures Codex reviews only the commits in `$REVIEW_BASE..$REVIEW_TIP`,
+not the entire branch up to HEAD.
 
 The codex review runs in background while the current agent proceeds with
 Step 9. Its output will be collected in Step 9.5.

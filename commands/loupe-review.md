@@ -64,20 +64,22 @@ Detect the input mode (test the first positional arg):
    The list name is the first path segment after the hostname.
 2. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
-3. **Local commit**: Only if there is **exactly 1 positional arg**, OR
-   if the first arg looks like a SHA hash (7-40 hex chars) or contains
-   ref modifiers (`^`, `~`, `@{`). Verify with `git rev-parse <ref>`.
-   If it succeeds, this is a local commit. When there are exactly 2
-   args and the first is a plain branch name (e.g., `master`), treat
-   the second arg as `base_branch` only if the first arg is SHA-like
-   or contains ref modifiers — otherwise fall through to subject search.
+3. **Local commit**: Verify the first arg with `git rev-parse <ref>`.
+   If it succeeds, apply these rules to decide commit vs search:
+   - **1 arg**: always commit mode.
+   - **2 args**: commit mode if EITHER the first arg is SHA-like
+     (7-40 hex chars) / contains ref modifiers (`^`, `~`, `@{`),
+     OR the second arg is also a valid git ref (`git rev-parse`
+     succeeds on second arg). Otherwise fall through to search.
+   - **3+ args**: always fall through to search.
    (This check MUST come before Message-Id detection, because refs
    like `HEAD@{1}` or `main@{upstream}` contain `@` but are valid
    git refs, not Message-Ids.)
-   If `git rev-parse` fails, fall through to mode 4.
-   **Rationale**: `master regression` → subject search (not commit);
-   `abc1234 release-9.0` → commit + base (first arg is SHA-like);
-   `HEAD` → commit (single arg); `HEAD~3` → commit (ref modifier).
+   If `git rev-parse` fails on the first arg, fall through to mode 4.
+   **Rationale**: `HEAD master` → commit+base (2nd is valid ref);
+   `master regression` → search (2nd is NOT a ref);
+   `abc1234 release-9.0` → commit+base (1st is SHA-like);
+   `HEAD` → commit (single arg); `riscv iommu fix` → search (3 args).
 4. **Message-Id**: Contains `@` but is not a URL and not a valid git ref.
    Strip angle brackets if present. To determine `$MAILING_LIST`, query
    lore's cross-list search:
@@ -206,19 +208,28 @@ search, allow them to provide new keywords and repeat from 1.5a.
 
 #### 1.5e: Extract Message-Id and continue
 
-From the selected result, extract the `msgid` field. Set `$INPUT_MODE` to
-`msgid` and proceed to Step 2 (remote fetch) with this Message-Id.
+From the selected result, extract the `msgid` field and the `series[0].id`.
 
-If the selected result is part of a series (has `series[0].id`), prefer to
-use the cover letter's Message-Id so that b4 fetches the entire series. Query
+Record two separate identifiers:
+- `$FETCH_MSGID` — the Message-Id used for downloading the series via b4/curl.
+  For series with a cover letter, prefer the cover letter's Message-Id.
+- `$SERIES_ID` — the Patchwork series ID (from `series[0].id`), used for
+  querying Patchwork in Step 7a/7b. This works regardless of whether we use
+  the cover letter or patch Message-Id for fetching.
+
+If the selected result is part of a series (has `series[0].id`), query
 the series endpoint to find the cover letter:
 
 ```
 WebFetch: $PATCHWORK_BASE/series/<series_id>/
 ```
 
-Extract `cover_letter.msgid` from the response. If available, use it as the
-Message-Id; otherwise fall back to the selected patch's `msgid`.
+Extract `cover_letter.msgid` from the response. If available, set
+`$FETCH_MSGID` to the cover letter's msgid. Keep `$SERIES_ID` as-is.
+
+Set `$INPUT_MODE` to `msgid` and proceed to Step 2 (remote fetch) with
+`$FETCH_MSGID`. Step 7a should use `$SERIES_ID` for Patchwork queries
+when available (falling back to `$FETCH_MSGID` if `$SERIES_ID` is not set).
 
 ### Step 2: Download patches with b4 (modes: `lore`, `msgid`)
 
@@ -564,8 +575,13 @@ best-effort.
 
 `$PATCHWORK_BASE` was already set in Step 1 based on `$MAILING_LIST`.
 
-Query the Patchwork REST API to locate the current series:
+If `$SERIES_ID` is set (from Step 1.5e subject search), query by series
+directly:
+```
+WebFetch: $PATCHWORK_BASE/series/$SERIES_ID/
+```
 
+Otherwise, query by message-id:
 ```
 WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&msgid=<message-id>
 ```
@@ -585,19 +601,28 @@ Record which backend returned data: set `$CONTEXT_BACKEND` to
 `"patchwork"` or `"patchew"`. This determines which API to use in
 subsequent substeps.
 
-#### 7b: Collect review comments
+#### 7b: Collect review comments across the whole series
+
+Comments, R-b tags, and blockers may be on any patch in the series,
+not just the one found in 7a. Query all patches in the series.
 
 If `$CONTEXT_BACKEND = "patchwork"`:
-```
-WebFetch: $PATCHWORK_BASE/patches/<patch_id>/comments/
-```
+1. First, list all patches in the series:
+   ```
+   WebFetch: $PATCHWORK_BASE/series/<series_id>/
+   ```
+   Extract the list of patch IDs from the `patches` array.
+2. For **each** patch ID, fetch comments:
+   ```
+   WebFetch: $PATCHWORK_BASE/patches/<patch_id>/comments/
+   ```
+3. Aggregate all comments across patches.
 
 If `$CONTEXT_BACKEND = "patchew"`:
 ```
 WebFetch: https://patchew.org/api/v1/series/<series_id>/messages/
 ```
-(Patchew uses a different API structure — extract comments from the
-messages endpoint instead of a per-patch comments endpoint.)
+(Patchew returns all messages in the series in one call.)
 
 Extract:
 - Reviewer name & email

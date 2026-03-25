@@ -547,10 +547,18 @@ If Step 3.5 found dependencies:
    b4 am <prerequisite-message-id> || \
      curl -sL "https://lore.kernel.org/${PREREQ_LIST}/<url-encoded-prereq-msgid>/t.mbox.gz" \
        | gunzip > thread.mbox
-   # If thread.mbox was used, filter it (same as Step 2 fallback):
-   # keep only [PATCH]/[RFC] subjects, sort by index, save as filtered.mbox
-   # Then remove the original thread.mbox to prevent find from picking it up:
-   if [ -f thread.mbox ]; then rm thread.mbox; fi
+   # If thread.mbox was produced by the curl fallback, MUST filter it
+   # before removal (same procedure as Step 2 fallback):
+   # 1. Split thread.mbox into individual messages
+   # 2. Keep only messages whose Subject contains [PATCH or [RFC
+   # 3. Discard messages with no diff body (replies)
+   # 4. Sort by subject index ([PATCH n/m])
+   # 5. Concatenate into filtered.mbox
+   # 6. THEN remove thread.mbox so find only picks up filtered.mbox
+   if [ -f thread.mbox ]; then
+       # <perform filtering steps 1-5 to produce filtered.mbox>
+       rm thread.mbox
+   fi
 
    # Apply prerequisite patches in the REVIEW WORKTREE (not repo-root)
    cd "${REVIEW_WORKTREE}"
@@ -1069,8 +1077,13 @@ the script from the reviewed revision to ensure consistency:
 ```bash
 cd "${REVIEW_WORKTREE:-$(git rev-parse --show-toplevel)}"
 
-# For root commits, use --root; otherwise use range
-if [ "$ROOT_COMMIT" = "true" ]; then
+# Generate patch files for checkpatch
+mkdir -p /tmp/loupe-review-<timestamp>/checkpatch/
+if [ -f /tmp/loupe-review-<timestamp>/full-range.patch ]; then
+    # Merge commit range: use the already-generated diff
+    cp /tmp/loupe-review-<timestamp>/full-range.patch \
+       /tmp/loupe-review-<timestamp>/checkpatch/
+elif [ "$ROOT_COMMIT" = "true" ]; then
     git format-patch --root $REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
 else
     git format-patch $REVIEW_BASE..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/

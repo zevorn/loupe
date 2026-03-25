@@ -64,15 +64,20 @@ Detect the input mode (test the first positional arg):
    The list name is the first path segment after the hostname.
 2. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
-3. **Local commit**: Only if there are **at most 2 positional args**
-   (source + optional base_branch). Verify the first arg with
-   `git rev-parse <ref>`. If it succeeds, this is a local commit.
+3. **Local commit**: Only if there is **exactly 1 positional arg**, OR
+   if the first arg looks like a SHA hash (7-40 hex chars) or contains
+   ref modifiers (`^`, `~`, `@{`). Verify with `git rev-parse <ref>`.
+   If it succeeds, this is a local commit. When there are exactly 2
+   args and the first is a plain branch name (e.g., `master`), treat
+   the second arg as `base_branch` only if the first arg is SHA-like
+   or contains ref modifiers — otherwise fall through to subject search.
    (This check MUST come before Message-Id detection, because refs
    like `HEAD@{1}` or `main@{upstream}` contain `@` but are valid
    git refs, not Message-Ids.)
-   If `git rev-parse` fails, OR if there are **3+ positional args**,
-   fall through to mode 4. This prevents `master fix bug` from being
-   misclassified as a commit review of `master`.
+   If `git rev-parse` fails, fall through to mode 4.
+   **Rationale**: `master regression` → subject search (not commit);
+   `abc1234 release-9.0` → commit + base (first arg is SHA-like);
+   `HEAD` → commit (single arg); `HEAD~3` → commit (ref modifier).
 4. **Message-Id**: Contains `@` but is not a URL and not a valid git ref.
    Strip angle brackets if present. To determine `$MAILING_LIST`, query
    lore's cross-list search:
@@ -268,9 +273,24 @@ curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/raw" \
     > /tmp/loupe-review-<timestamp>/patch.mbox
 ```
 
-**Fallback 3 — Ask user**: If all automated approaches fail, show the
-errors and ask for guidance. Suggest the user manually download the mbox
-or provide a local file path.
+**Fallback 3 — Ask user or exit (CI)**:
+
+- **Interactive mode**: If all automated approaches fail, show the
+  errors and ask for guidance. Suggest the user manually download the
+  mbox or provide a local file path.
+- **CI mode** (`$CI_MODE`): If all automated approaches fail, write an
+  error JSON to `$OUTPUT_JSON_PATH` and exit non-zero:
+  ```json
+  {
+    "schema_version": "1",
+    "error": "Failed to download patches for <message-id>",
+    "message_id": "<message-id>",
+    "generated_at": "<timestamp>",
+    "generator": "loupe-review v1.0"
+  }
+  ```
+  This ensures the CI pipeline can detect and handle failures without
+  hanging on interactive prompts.
 
 ### Step 2b: Export local commits as patches (modes: `commit`, `range`)
 
@@ -425,8 +445,12 @@ If Step 3.5 found dependencies:
    # Download prerequisite (same fallback strategy as Step 2)
    mkdir -p /tmp/loupe-review-<timestamp>/prereq-<n>
    cd /tmp/loupe-review-<timestamp>/prereq-<n>
+   # If the dependency reference was a full lore URL, extract its list
+   # name for the curl fallback (e.g., Based-on: https://lore.kernel.org/kvmarm/...)
+   # Otherwise default to $MAILING_LIST.
+   PREREQ_LIST="${PREREQ_LORE_LIST:-$MAILING_LIST}"
    b4 am <prerequisite-message-id> || \
-     curl -sL "https://lore.kernel.org/$MAILING_LIST/<prerequisite-message-id>/t.mbox.gz" \
+     curl -sL "https://lore.kernel.org/${PREREQ_LIST}/<prerequisite-message-id>/t.mbox.gz" \
        | gunzip > thread.mbox
    # If thread.mbox was used, filter it (same as Step 2 fallback):
    # keep only [PATCH]/[RFC] subjects, sort by index, save as filtered.mbox

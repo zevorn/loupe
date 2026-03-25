@@ -575,12 +575,13 @@ If Step 3.5 found dependencies:
            subj=$(grep -m1 '^Subject:' "$msg" | sed 's/^Subject: *//')
            # Must have [PATCH or [RFC in subject
            echo "$subj" | grep -qiE '\[(PATCH|RFC)' || { rm "$msg"; continue; }
-           # Exclude cover letters: subject contains 0/N pattern
-           echo "$subj" | grep -qP '\b0/\d+' && { rm "$msg"; continue; }
+           # Exclude cover letters: subject contains 0/N pattern (portable)
+           echo "$subj" | grep -qE '[[:space:]]0/[0-9]+' && { rm "$msg"; continue; }
            # Must have a diff body (at least one line starting with --- or +++)
            grep -q '^---$\|^+++\|^diff --git' "$msg" || { rm "$msg"; continue; }
-           # Extract patch index for sorting
-           idx=$(echo "$subj" | grep -oP '\d+(?=/\d+)' || echo "999")
+           # Extract patch index for sorting (portable: no grep -P)
+           idx=$(echo "$subj" | sed -n 's/.*[[:space:]]\([0-9]\{1,\}\)\/[0-9]\{1,\}.*/\1/p')
+           idx="${idx:-999}"
            mv "$msg" "${msg}.${idx}"
        done
 

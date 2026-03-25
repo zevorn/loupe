@@ -558,26 +558,37 @@ If Step 3.5 found dependencies:
    # 5. Concatenate into filtered.mbox
    # 6. THEN remove thread.mbox so find only picks up filtered.mbox
    if [ -f thread.mbox ]; then
-       # Filter: keep only [PATCH/[RFC messages, sort by index
-       formail -s sh -c '
-           subj=$(formail -xSubject: | head -1)
-           echo "$subj" | grep -qiE "\[(PATCH|RFC)" || exit 0
-           cat
-       ' < thread.mbox | \
-       formail -s sh -c '
-           subj=$(formail -xSubject: | head -1)
-           idx=$(echo "$subj" | grep -oP "\d+(?=/\d+)" || echo "999")
-           echo "$idx" >&2
-           cat
-       ' 2>/tmp/loupe-review-<timestamp>/prereq-<n>/sort-keys \
-       > /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox
-       # If formail is not available, fall back: just rename as filtered
-       if [ ! -s /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox ]; then
+       PREREQ_TMP="/tmp/loupe-review-<timestamp>/prereq-<n>"
+       mkdir -p "${PREREQ_TMP}/split"
+
+       # Split mbox into individual message files
+       formail -ds sh -c 'cat > "${PREREQ_TMP}/split/msg-$(printf "%04d" $FILSTRSTRSTR)"' \
+           < thread.mbox 2>/dev/null || csplit -z thread.mbox '/^From /' '{*}' \
+           --prefix="${PREREQ_TMP}/split/msg-" --suffix-format="%04d"
+
+       # Filter: keep [PATCH]/[RFC] with diff body, exclude cover letters (0/N)
+       for msg in "${PREREQ_TMP}"/split/msg-*; do
+           subj=$(grep -m1 '^Subject:' "$msg" | sed 's/^Subject: *//')
+           # Must have [PATCH or [RFC in subject
+           echo "$subj" | grep -qiE '\[(PATCH|RFC)' || { rm "$msg"; continue; }
+           # Exclude cover letters: subject contains 0/N pattern
+           echo "$subj" | grep -qP '\b0/\d+' && { rm "$msg"; continue; }
+           # Must have a diff body (at least one line starting with --- or +++)
+           grep -q '^---$\|^+++\|^diff --git' "$msg" || { rm "$msg"; continue; }
+           # Extract patch index for sorting
+           idx=$(echo "$subj" | grep -oP '\d+(?=/\d+)' || echo "999")
+           mv "$msg" "${msg}.${idx}"
+       done
+
+       # Sort by extracted index and concatenate
+       ls "${PREREQ_TMP}"/split/msg-*.* 2>/dev/null | sort -t. -k2 -n | \
+           xargs cat > filtered.mbox 2>/dev/null
+
+       # Fallback if filtering produced nothing (formail/csplit unavailable)
+       if [ ! -s filtered.mbox ]; then
            cp thread.mbox filtered.mbox
-       else
-           mv /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox filtered.mbox
        fi
-       rm thread.mbox
+       rm -rf "${PREREQ_TMP}/split" thread.mbox
    fi
 
    # Apply prerequisite patches in the REVIEW WORKTREE (not repo-root)

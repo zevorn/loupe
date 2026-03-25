@@ -38,7 +38,8 @@ Format: `<source> [base_branch] [+zh] [--ci] [--output-json <path>]`
 
 Extract from the user-provided arguments:
 
-First, scan for and extract flags:
+First, scan for and extract all flags (before parsing positional args):
+- If `+zh` is present, set `$ZH_MODE=true` and remove it from args.
 - If `--ci` is present, set `$CI_MODE=true` and remove it from args.
 - If `--output-json <path>` is present, set `$OUTPUT_JSON_PATH=<path>` and
   remove both tokens from args.
@@ -74,8 +75,8 @@ Determine the review mode based on environment and flags:
 if $CI_MODE:
     $REVIEW_MODE = "ci"
     # Enforce: source must be lore URL or Message-Id in CI mode
-    if $INPUT_MODE == "search":
-        Error: "CI mode requires a lore URL or Message-Id, not subject search."
+    if $INPUT_MODE not in ("lore", "msgid"):
+        Error: "CI mode requires a lore URL or Message-Id. Got: $INPUT_MODE"
         Exit.
 elif running in Claude Code:
     if `command -v codex` succeeds:
@@ -102,6 +103,9 @@ Search for patches by subject keywords on Patchwork and lore, present results
 to the user, and extract the Message-Id for the selected patch.
 
 #### 1.5a: Search Patchwork API
+
+Use WebFetch for API queries. If WebFetch is unavailable (Codex), use
+`curl -sL "<url>" | jq '...'` via the Bash tool instead.
 
 Query the Patchwork REST API with the keywords:
 
@@ -336,7 +340,9 @@ If Step 3.5 found dependencies:
 
    # Apply prerequisite patches ON THE REVIEW BRANCH
    cd <repo-root>
-   git am /tmp/loupe-review-<timestamp>/prereq-<n>/*.mbx /tmp/loupe-review-<timestamp>/prereq-<n>/*.mbox 2>/dev/null
+   PREREQ_DIR="/tmp/loupe-review-<timestamp>/prereq-<n>"
+   PREREQ_FILES=$(ls "${PREREQ_DIR}"/*.mbx "${PREREQ_DIR}"/*.mbox 2>/dev/null)
+   git am ${PREREQ_FILES}
    ```
 3. If prerequisite application fails:
    - Try `--3way`
@@ -352,14 +358,18 @@ that might be prerequisites.
 
 ### Step 5: Apply patches
 
-Apply patches from the download directory. Match both `.mbx` (from b4)
-and `.mbox` (from curl fallback):
+Apply patches from the download directory. Collect all patch files first
+to avoid unmatched globs being passed literally to `git am`:
 
 ```bash
-git am /tmp/loupe-review-<timestamp>/*.mbx /tmp/loupe-review-<timestamp>/*.mbox 2>/dev/null
+PATCH_DIR="/tmp/loupe-review-<timestamp>"
+PATCH_FILES=$(ls "${PATCH_DIR}"/*.mbx "${PATCH_DIR}"/*.mbox "${PATCH_DIR}"/*.patch 2>/dev/null)
+if [ -z "${PATCH_FILES}" ]; then
+    Error: "No patch files found in ${PATCH_DIR}"
+    Exit.
+fi
+git am ${PATCH_FILES}
 ```
-
-If neither glob matches any files, check for `.patch` files as well.
 
 On failure: show error, `git am --abort`, retry with `--3way`.
 Still failing: ask user.
@@ -409,8 +419,15 @@ Before reviewing the code, gather external context from Patchwork and the
 mailing list archive. This surfaces prior reviewer feedback, version history,
 and related work that pure code reading cannot reveal.
 
-Use the **WebFetch** tool for all API calls and page fetches below. If a
-query fails or returns empty, skip it and move on — this step is best-effort.
+Use the **WebFetch** tool for all API calls and page fetches below. If
+WebFetch is not available (e.g., in Codex environments), use `curl` via
+the Bash tool instead:
+```bash
+curl -sL "<url>" | jq '...'   # For JSON APIs
+curl -sL "<url>"               # For HTML pages
+```
+If a query fails or returns empty, skip it and move on — this step is
+best-effort.
 
 #### 7a: Find the patch on Patchwork
 

@@ -363,10 +363,12 @@ elif [ "<mode>" = "commit" ] && [ "$(git cat-file -t <sha>)" = "commit" ] \
     git diff <sha>^..<sha> > /tmp/loupe-review-<timestamp>/full-range.patch
 else
     # Normal case: export as individual patches
-    # For a commit range (e.g., master..HEAD):
-    git format-patch <base>..<tip> -o /tmp/loupe-review-<timestamp>/
-    # For a single commit:
-    # git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
+    if [ "$INPUT_MODE" = "range" ]; then
+        git format-patch <base>..<tip> -o /tmp/loupe-review-<timestamp>/
+    else
+        # Single commit
+        git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
+    fi
 fi
 ```
 
@@ -556,7 +558,25 @@ If Step 3.5 found dependencies:
    # 5. Concatenate into filtered.mbox
    # 6. THEN remove thread.mbox so find only picks up filtered.mbox
    if [ -f thread.mbox ]; then
-       # <perform filtering steps 1-5 to produce filtered.mbox>
+       # Filter: keep only [PATCH/[RFC messages, sort by index
+       formail -s sh -c '
+           subj=$(formail -xSubject: | head -1)
+           echo "$subj" | grep -qiE "\[(PATCH|RFC)" || exit 0
+           cat
+       ' < thread.mbox | \
+       formail -s sh -c '
+           subj=$(formail -xSubject: | head -1)
+           idx=$(echo "$subj" | grep -oP "\d+(?=/\d+)" || echo "999")
+           echo "$idx" >&2
+           cat
+       ' 2>/tmp/loupe-review-<timestamp>/prereq-<n>/sort-keys \
+       > /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox
+       # If formail is not available, fall back: just rename as filtered
+       if [ ! -s /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox ]; then
+           cp thread.mbox filtered.mbox
+       else
+           mv /tmp/loupe-review-<timestamp>/prereq-<n>/filtered-unsorted.mbox filtered.mbox
+       fi
        rm thread.mbox
    fi
 

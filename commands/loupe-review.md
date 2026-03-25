@@ -333,7 +333,9 @@ application in Steps 4-5:
 
 ### Step 3: Analyze the patch series (version-aware)
 
-Read the `.cover` file (if present) and the `.mbx` file to get:
+Read the `.cover` file (if present) and the patch file (`.mbx` from b4,
+or `.mbox`/`filtered.mbox` from curl fallback, or `.patch` from local
+`format-patch`) to get:
 - Series title, purpose, patch count, author
 
 #### 3a: Extract version information
@@ -420,10 +422,14 @@ If Step 3.5 found dependencies:
 1. Inform the user: "Found prerequisite: <description>"
 2. Download and apply prerequisites on the review branch:
    ```bash
-   # Download prerequisite
+   # Download prerequisite (same fallback strategy as Step 2)
    mkdir -p /tmp/loupe-review-<timestamp>/prereq-<n>
    cd /tmp/loupe-review-<timestamp>/prereq-<n>
-   b4 am <prerequisite-message-id>
+   b4 am <prerequisite-message-id> || \
+     curl -sL "https://lore.kernel.org/$MAILING_LIST/<prerequisite-message-id>/t.mbox.gz" \
+       | gunzip > thread.mbox
+   # If thread.mbox was used, filter it (same as Step 2 fallback):
+   # keep only [PATCH]/[RFC] subjects, sort by index, save as filtered.mbox
 
    # Apply prerequisite patches ON THE REVIEW BRANCH
    cd <repo-root>
@@ -675,8 +681,16 @@ understanding beyond what the diff alone shows.
 
 #### 8.5a: Read full modified files
 
-For each file touched by the series, read the **complete file content** (not
-just the diff hunks). This allows understanding:
+For each file touched by the series, read the **complete file content** at
+the reviewed revision (not just the diff hunks).
+
+**IMPORTANT**: For local `commit`/`range` modes, the worktree may not
+match `$REVIEW_TIP`. Use `git show $REVIEW_TIP:<file_path>` to read
+files at the correct revision instead of reading from the filesystem.
+For remote modes (where patches were applied to the current branch),
+reading the worktree directly is acceptable.
+
+This allows understanding:
 - The surrounding code structure
 - How the modified function fits into the file
 - Existing patterns and conventions in the file

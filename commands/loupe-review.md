@@ -80,6 +80,9 @@ Otherwise, test the first positional arg:
    Example: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz`
    → `<msgid>`, `$MAILING_LIST = "qemu-devel"`
    The list name is the first path segment after the hostname.
+   **URL-decode** the extracted Message-Id (e.g., `%2B` → `+`,
+   `%2F` → `/`, `%3D` → `=`) to get the original Message-Id. `b4`
+   and other tools need the raw ID. Re-encode when constructing URLs.
 2. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
 3. **Local commit**: Verify the first arg with `git rev-parse <ref>`.
@@ -341,17 +344,35 @@ curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/raw" \
 
 ### Step 2b: Export local commits as patches (modes: `commit`, `range`)
 
-For local commit input, export patches using `git format-patch`:
+For local commit input, first check for merge commits:
 
 ```bash
 mkdir -p /tmp/loupe-review-<timestamp>
 
-# For a commit range (e.g., master..HEAD):
-git format-patch <base>..<tip> -o /tmp/loupe-review-<timestamp>/
-
-# For a single commit:
-git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
+# Detect merge commits in the range
+if git rev-list --merges <base>..<tip> | head -1 | grep -q .; then
+    echo "Warning: range contains merge commits."
+    echo "git format-patch cannot export merge commits."
+    echo "Using git diff for the full range instead."
+    git diff <base>..<tip> > /tmp/loupe-review-<timestamp>/full-range.patch
+    # Also check single commit case
+elif [ "<mode>" = "commit" ] && [ "$(git cat-file -t <sha>)" = "commit" ] \
+     && [ "$(git rev-list --parents -1 <sha> | wc -w)" -gt 2 ]; then
+    echo "Warning: <sha> is a merge commit."
+    echo "Using git diff for the merge instead."
+    git diff <sha>^..<sha> > /tmp/loupe-review-<timestamp>/full-range.patch
+else
+    # Normal case: export as individual patches
+    # For a commit range (e.g., master..HEAD):
+    git format-patch <base>..<tip> -o /tmp/loupe-review-<timestamp>/
+    # For a single commit:
+    # git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
+fi
 ```
+
+Note: when `full-range.patch` is produced instead of individual `.patch`
+files, checkpatch runs on the single diff file and per-patch reply
+generation treats the entire range as one unit.
 
 This produces numbered `.patch` files ready for review. There is no `.mbx`
 or `.cover` file in this mode.

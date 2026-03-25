@@ -543,7 +543,10 @@ If Step 3.5 found dependencies:
        PREREQ_LIST=$(curl -sL -o /dev/null -w '%{url_effective}' \
            "https://lore.kernel.org/all/<url-encoded-prereq-msgid>/" \
            | sed 's|https://lore.kernel.org/||;s|/.*||')
-       PREREQ_LIST="${PREREQ_LIST:-$MAILING_LIST}"
+       # If redirect stayed on /all/ (msgid not found), treat as failure
+       if [ -z "${PREREQ_LIST}" ] || [ "${PREREQ_LIST}" = "all" ]; then
+           PREREQ_LIST="${MAILING_LIST}"
+       fi
    fi
    # URL-encode the prereq message-id before use in URLs
    b4 am <prerequisite-message-id> || \
@@ -585,9 +588,13 @@ If Step 3.5 found dependencies:
        ls "${PREREQ_TMP}"/split/msg-*.* 2>/dev/null | sort -t. -k2 -n | \
            xargs cat > filtered.mbox 2>/dev/null
 
-       # Fallback if filtering produced nothing (formail/csplit unavailable)
+       # If filtering produced nothing, do NOT fall back to unfiltered
+       # thread.mbox — it contains cover letters and replies that break
+       # git am. Instead, warn and leave filtered.mbox empty so the
+       # empty-check in the apply step handles it gracefully.
        if [ ! -s filtered.mbox ]; then
-           cp thread.mbox filtered.mbox
+           echo "Warning: prerequisite mbox filtering produced no patch files."
+           echo "The prerequisite may not contain applicable patches."
        fi
        rm -rf "${PREREQ_TMP}/split" thread.mbox
    fi

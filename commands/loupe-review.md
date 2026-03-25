@@ -9,7 +9,7 @@ description: Download, apply, and review mailing list patches with multi-agent c
 
 $ARGUMENTS
 
-Format: `<source> [base_branch] [+zh] [--ci] [--output-json <path>]`
+Format: `<source> [base_branch] [+zh] [--ci] [--base <branch>] [--output-json <path>]`
 
 - `source` (required): One of the following input forms:
   - **lore URL**: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz`
@@ -27,6 +27,9 @@ Format: `<source> [base_branch] [+zh] [--ci] [--output-json <path>]`
 - `--ci` (optional): CI mode. Single agent, no interactive prompts, outputs
   structured JSON instead of reply.md. Requires source to be a lore URL or
   Message-Id (subject search is not supported in CI mode).
+- `--base <branch>` (optional): Explicit base branch. Useful for subject
+  search mode where the positional `base_branch` is ambiguous with search
+  keywords. Overrides the positional second arg. Default: `master`.
 - `--output-json <path>` (optional): JSON output path for CI mode. If path
   ends with `/` or is an existing directory, the file is auto-named
   `<id>.json` inside it. Otherwise treated as a full file path.
@@ -43,17 +46,23 @@ First, scan for and extract all flags (before parsing positional args):
 - If `--ci` is present, set `$CI_MODE=true` and remove it from args.
 - If `--output-json <path>` is present, set `$OUTPUT_JSON_PATH=<path>` and
   remove both tokens from args.
+- If `--base <branch>` is present, set `$BASE_BRANCH=<branch>` and remove
+  both tokens from args. This allows specifying the base branch explicitly,
+  which is especially useful in subject search mode where positional
+  `base_branch` is ambiguous with search keywords.
 
 After flag extraction, parse remaining positional args. The parsing is
 mode-dependent — first attempt to detect the input mode from the first
 arg, then decide how to consume the rest:
 
+- If `$BASE_BRANCH` was already set by `--base`, use it for all modes.
 - If the first arg is a lore URL, Message-Id, commit range, or local
   commit → it is the `source`. The second arg (if any) is `base_branch`
-  (default: `master`).
+  (default: `$BASE_BRANCH` or `master`).
 - If the first arg does not match any of the above → **all remaining
   positional args are joined as subject search keywords** (e.g.,
-  `riscv iommu fix` → search for `"riscv iommu fix"`).
+  `riscv iommu fix` → search for `"riscv iommu fix"`). The base
+  branch comes from `--base` flag or defaults to `master`.
 
 Detect the input mode (test the first positional arg):
 
@@ -289,8 +298,19 @@ curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/raw" \
 - **Interactive mode**: If all automated approaches fail, show the
   errors and ask for guidance. Suggest the user manually download the
   mbox or provide a local file path.
-- **CI mode** (`$CI_MODE`): If all automated approaches fail, write an
-  error JSON to `$OUTPUT_JSON_PATH` and exit non-zero:
+- **CI mode** (`$CI_MODE`): If all automated approaches fail, resolve
+  the output path first (same logic as Step 12):
+  ```bash
+  # Resolve output path before writing error JSON
+  if $OUTPUT_JSON_PATH ends with "/" or is a directory:
+      OUTPUT_FILE="${OUTPUT_JSON_PATH}/error-<message-id-slug>.json"
+  else:
+      OUTPUT_FILE="${OUTPUT_JSON_PATH}"
+  # Default if not set:
+  OUTPUT_FILE="${OUTPUT_FILE:-/tmp/loupe-review-<timestamp>/error.json}"
+  mkdir -p "$(dirname "$OUTPUT_FILE")"
+  ```
+  Write error JSON to `$OUTPUT_FILE` and exit non-zero:
   ```json
   {
     "schema_version": "1",
@@ -748,13 +768,20 @@ This allows understanding:
 #### 8.5b: Identify and read related definitions
 
 From the diff, extract key identifiers (struct names, function names, macros,
-type definitions) and locate their definitions:
+type definitions) and locate their definitions.
+
+**IMPORTANT**: For local `commit`/`range` modes, use `git grep` at the
+reviewed revision instead of worktree `grep`, since the worktree may
+not match `$REVIEW_TIP`:
 
 ```bash
 # For each important identifier in the diff:
-grep -rn "typedef.*<type_name>" --include="*.h" --include="*.c"
-grep -rn "struct <struct_name> {" --include="*.h"
-grep -rn "<function_name>(" --include="*.h" --include="*.c" | head -10
+# Local modes: use git grep at $REVIEW_TIP
+git grep -n "typedef.*<type_name>" $REVIEW_TIP -- '*.h' '*.c'
+git grep -n "struct <struct_name> {" $REVIEW_TIP -- '*.h'
+git grep -n "<function_name>(" $REVIEW_TIP -- '*.h' '*.c' | head -10
+
+# Remote modes (worktree matches): grep or git grep both work
 ```
 
 Read the header files that define types, macros, and APIs used in the patch.
@@ -767,7 +794,10 @@ For modified or newly added functions:
 - Identify the ownership and lifecycle patterns in the call chain
 
 ```bash
-grep -rn "<function_name>" --include="*.c" --include="*.h" | head -20
+# Local modes: git grep at $REVIEW_TIP
+git grep -n "<function_name>" $REVIEW_TIP -- '*.c' '*.h' | head -20
+
+# Remote modes: worktree grep is also acceptable
 ```
 
 #### 8.5d: Context budget

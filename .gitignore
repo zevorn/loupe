@@ -1,3 +1,7 @@
 .humanize/
 !.humanize/plans/
 .superpowers/
+*.swp
+*.swo
+*~
+.DS_Store

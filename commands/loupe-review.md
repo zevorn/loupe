@@ -302,20 +302,30 @@ Set `$REVIEW_TIP` and `$REVIEW_BASE` for subsequent diff/review commands:
 - For commit range: `$REVIEW_BASE = <base>`, `$REVIEW_TIP = <tip>`
 - For single commit: `$REVIEW_TIP = <sha>`. For `$REVIEW_BASE`:
   - If `<sha>` has a parent: `$REVIEW_BASE = <sha>^`
-  - If `<sha>` is a root commit (no parent, e.g., `git rev-parse <sha>^`
-    fails): `$REVIEW_BASE = $(git hash-object -t tree /dev/null)` (the
-    empty tree hash), so `git diff` shows the full initial commit.
+  - If `<sha>` is a root commit (no parent): set `$ROOT_COMMIT = true`
+    and leave `$REVIEW_BASE` unset. Root commits require special
+    handling — see below.
 
 All subsequent steps that use `<base_branch>..$REVIEW_TIP` MUST use
 `$REVIEW_BASE..$REVIEW_TIP` instead for local modes.
+
+**Root commit handling**: When `$ROOT_COMMIT = true`, the `A..B` range
+syntax cannot be used (there is no ancestor commit). Instead:
+- `git log`: use `git log --oneline $REVIEW_TIP` (just the one commit)
+- `git diff`: use `git diff-tree -p --root $REVIEW_TIP`
+- `git format-patch`: use `git format-patch --root $REVIEW_TIP`
+- `codex review`: use `git diff-tree -p --root $REVIEW_TIP | codex exec ...`
 
 **IMPORTANT**: All subsequent steps that use diff/review commands MUST
 use `$REVIEW_BASE..$REVIEW_TIP` instead of hardcoded refs.
 
 For remote modes (lore, msgid), after branch creation and patch
-application in Steps 4-5, set:
-- `$REVIEW_BASE = <base_branch>` (the branch checked out before applying)
+application in Steps 4-5:
 - `$REVIEW_TIP = HEAD` (patches are applied to the current branch tip)
+- `$REVIEW_BASE`: set to `<base_branch>` ONLY if Step 4.5 did not
+  already update it (i.e., no prerequisites were applied). If Step 4.5
+  set `$REVIEW_BASE` to the post-prerequisite HEAD, do NOT overwrite it.
+  This ensures prerequisite commits are excluded from the review range.
 
 ### Step 3: Analyze the patch series (version-aware)
 
@@ -526,12 +536,23 @@ If the patch is not found on the primary instance, try the fallback:
 - For `qemu-devel`: use Patchew (`https://patchew.org/api/v1/projects/qemu/series/?message_id=<message-id>`)
 - For other lists: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>`
 
-#### 7b: Collect review comments from Patchwork
+Record which backend returned data: set `$CONTEXT_BACKEND` to
+`"patchwork"` or `"patchew"`. This determines which API to use in
+subsequent substeps.
 
-For each patch ID found in 7a:
+#### 7b: Collect review comments
+
+If `$CONTEXT_BACKEND = "patchwork"`:
 ```
 WebFetch: $PATCHWORK_BASE/patches/<patch_id>/comments/
 ```
+
+If `$CONTEXT_BACKEND = "patchew"`:
+```
+WebFetch: https://patchew.org/api/v1/series/<series_id>/messages/
+```
+(Patchew uses a different API structure — extract comments from the
+messages endpoint instead of a per-patch comments endpoint.)
 
 Extract:
 - Reviewer name & email

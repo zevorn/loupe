@@ -895,14 +895,16 @@ else
     git diff $REVIEW_BASE..$REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
 fi
 
-# Use Bash tool with run_in_background=true
+# Run in background: use Bash tool with run_in_background=true,
+# or append & to the shell command so Step 9 can proceed in parallel.
 codex exec "Review the following code diff for bugs, security issues, \
     and correctness problems. For each finding, output: \
     [P0-9] <title> - <file_path>:<line_range> \
     followed by a detailed explanation. The file path and line range \
     are required for cross-referencing." \
     < /tmp/loupe-review-<timestamp>/review.diff \
-    > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
+    > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1 &
+CODEX_PID=$!
 ```
 
 This approach ensures: (1) root commits work (via `diff-tree --root`),
@@ -1019,8 +1021,12 @@ Review ALL findings from stages A–D and apply strict quality control:
 
 #### Checkpatch
 
-Run checkpatch on each patch:
+Run checkpatch on each patch. Must run from the repository root (or
+review worktree root) so `./scripts/checkpatch.pl` resolves correctly:
 ```bash
+# Ensure we're at repo root
+cd "${REVIEW_WORKTREE:-$(git rev-parse --show-toplevel)}"
+
 # For root commits, use --root; otherwise use range
 if [ "$ROOT_COMMIT" = "true" ]; then
     git format-patch --root $REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/

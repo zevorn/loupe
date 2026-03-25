@@ -17,11 +17,8 @@ Usage: $0 [OPTIONS]
 
 Install loupe skill for AI coding assistants.
 
-Preferred method for Claude Code:
-    claude plugin add github:zevorn/loupe
-
 Options:
-    --claude        Install for Claude Code (manual)
+    --claude        Install for Claude Code
     --codex         Install for Codex
     --all           Install for all supported platforms
     --uninstall     Remove installed skill files

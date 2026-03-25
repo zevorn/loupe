@@ -413,8 +413,8 @@ If Step 3.5 found dependencies:
    # Apply prerequisite patches ON THE REVIEW BRANCH
    cd <repo-root>
    PREREQ_DIR="/tmp/loupe-review-<timestamp>/prereq-<n>"
-   PREREQ_FILES=$(ls "${PREREQ_DIR}"/*.mbx "${PREREQ_DIR}"/*.mbox 2>/dev/null)
-   git am ${PREREQ_FILES}
+   PREREQ_FILES=$(find "${PREREQ_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' \) -print | sort)
+   echo "${PREREQ_FILES}" | xargs git am
    ```
 3. If prerequisite application fails:
    - Try `--3way`
@@ -443,12 +443,12 @@ to avoid unmatched globs being passed literally to `git am`:
 
 ```bash
 PATCH_DIR="/tmp/loupe-review-<timestamp>"
-PATCH_FILES=$(ls "${PATCH_DIR}"/*.mbx "${PATCH_DIR}"/*.mbox "${PATCH_DIR}"/*.patch 2>/dev/null)
+PATCH_FILES=$(find "${PATCH_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' -o -name '*.patch' \) -print | sort)
 if [ -z "${PATCH_FILES}" ]; then
     Error: "No patch files found in ${PATCH_DIR}"
     Exit.
 fi
-git am ${PATCH_FILES}
+echo "${PATCH_FILES}" | xargs git am
 ```
 
 On failure: show error, `git am --abort`, retry with `--3way`.
@@ -756,12 +756,17 @@ in multiple focused stages. Each stage targets a specific category of issues.
 This multi-stage approach (inspired by the sashiko kernel review system) reduces
 blind spots and improves issue detection.
 
-First, gather the basic diff information. Use `$REVIEW_BASE` for local
-modes (commit/range), `<base_branch>` for remote modes (lore/msgid):
+First, gather the basic diff information. If `$ROOT_COMMIT` is true,
+use the root-commit alternatives from Step 2b. Otherwise:
 
 1. `git log --oneline $REVIEW_BASE..$REVIEW_TIP`
 2. `git diff $REVIEW_BASE..$REVIEW_TIP --stat`
 3. `git show <hash>` for each commit
+
+For root commits:
+1. `git log --oneline $REVIEW_TIP` (single commit)
+2. `git diff-tree -p --root --stat $REVIEW_TIP`
+3. `git show $REVIEW_TIP`
 
 Then execute the following review stages sequentially:
 
@@ -849,7 +854,12 @@ Review ALL findings from stages A–D and apply strict quality control:
 
 Run checkpatch on each patch:
 ```bash
-git format-patch $REVIEW_BASE..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
+# For root commits, use --root; otherwise use range
+if [ "$ROOT_COMMIT" = "true" ]; then
+    git format-patch --root $REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
+else
+    git format-patch $REVIEW_BASE..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
+fi
 ./scripts/checkpatch.pl /tmp/loupe-review-<timestamp>/checkpatch/*.patch
 ```
 

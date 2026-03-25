@@ -21,20 +21,16 @@ Supersedes [patch-review](https://github.com/zevorn/patch-review). Designed for 
 
 ### Claude Code (recommended)
 
-Clone the repo and use `--plugin-dir` to register it as a local plugin:
-
-```bash
-git clone git@github.com:zevorn/loupe.git ~/loupe
-claude mcp add --plugin-dir ~/loupe
-```
-
-Or install the skill file directly:
+Clone the repo and install the skill file:
 
 ```bash
 git clone git@github.com:zevorn/loupe.git
 cd loupe
 ./install.sh --claude
 ```
+
+This copies `loupe-review.md` to `~/.claude/commands/`, making
+`/loupe-review` available as a slash command.
 
 After installation, use in Claude Code:
 

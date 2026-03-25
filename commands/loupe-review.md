@@ -343,7 +343,16 @@ git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
 This produces numbered `.patch` files ready for review. There is no `.mbx`
 or `.cover` file in this mode.
 
-After export, proceed to **Step 3 (metadata extraction)** to populate
+First, set `$REVIEW_TIP` and `$REVIEW_BASE` (needed by metadata extraction
+and all subsequent steps):
+- For commit range: `$REVIEW_BASE = <base>`, `$REVIEW_TIP = <tip>`
+- For single commit: `$REVIEW_TIP = <sha>`. For `$REVIEW_BASE`:
+  - If `<sha>` has a parent: `$REVIEW_BASE = <sha>^`
+  - If `<sha>` is a root commit (no parent): set `$ROOT_COMMIT = true`
+    and leave `$REVIEW_BASE` unset. Root commits require special
+    handling — see below.
+
+Then proceed to **Step 3 (metadata extraction)** to populate
 `$SERIES_VERSION`, `$SUBJECT_STEM`, title, author, and patch count.
 For local mode, extract these from the `.patch` files and commit messages:
 - **Title**: first commit's subject line (or range description)
@@ -355,14 +364,6 @@ For local mode, extract these from the `.patch` files and commit messages:
 Then skip Step 3.5 (prerequisite detection) and Step 4 (branch
 creation) — the commits are already in the local repo. Proceed directly
 to Step 6 (intent summary).
-
-Set `$REVIEW_TIP` and `$REVIEW_BASE` for subsequent diff/review commands:
-- For commit range: `$REVIEW_BASE = <base>`, `$REVIEW_TIP = <tip>`
-- For single commit: `$REVIEW_TIP = <sha>`. For `$REVIEW_BASE`:
-  - If `<sha>` has a parent: `$REVIEW_BASE = <sha>^`
-  - If `<sha>` is a root commit (no parent): set `$ROOT_COMMIT = true`
-    and leave `$REVIEW_BASE` unset. Root commits require special
-    handling — see below.
 
 All subsequent steps that use `<base_branch>..$REVIEW_TIP` MUST use
 `$REVIEW_BASE..$REVIEW_TIP` instead for local modes.
@@ -492,6 +493,8 @@ If Step 3.5 found dependencies:
        | gunzip > thread.mbox
    # If thread.mbox was used, filter it (same as Step 2 fallback):
    # keep only [PATCH]/[RFC] subjects, sort by index, save as filtered.mbox
+   # Then remove the original thread.mbox to prevent find from picking it up:
+   if [ -f thread.mbox ]; then rm thread.mbox; fi
 
    # Apply prerequisite patches ON THE REVIEW BRANCH
    cd <repo-root>

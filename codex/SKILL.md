@@ -21,7 +21,7 @@ The user will specify the input in their message. Parse their request to determi
 - **base_branch** (optional): branch to diff against, default `master`
 - **flags**: `+zh` for Chinese output, `--ci` for JSON output, `--base <branch>`, `--output-json <path>`
 
-Then execute the loupe-review workflow from `commands/loupe-review.md` in this skill's source repository.
+Then execute the loupe-review workflow from `loupe-review.md` installed alongside this skill file.
 
 ## Input Examples
 

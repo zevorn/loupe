@@ -543,7 +543,7 @@ If Step 3.5 found dependencies:
    the current HEAD so that the review range excludes prerequisite
    commits:
    ```bash
-   $REVIEW_BASE = $(git rev-parse HEAD)
+   REVIEW_BASE=$(git rev-parse HEAD)
    ```
    This ensures `$REVIEW_BASE..$REVIEW_TIP` in Steps 9/checkpatch
    covers only the current series, not the prerequisites.
@@ -1207,8 +1207,8 @@ Key rules:
 
 Before generating any reply, determine the reviewer's identity:
 ```bash
-$REVIEWER_NAME = $(git config user.name)
-$REVIEWER_EMAIL = $(git config user.email)
+REVIEWER_NAME=$(git config user.name)
+REVIEWER_EMAIL=$(git config user.email)
 ```
 If not set, ask the user for their name and email.
 

@@ -242,6 +242,15 @@ creation) — the commits are already in the local repo. Proceed directly
 to Step 6 (intent summary), using `<base>` as the base branch for diff
 and review commands.
 
+Set `$REVIEW_TIP` to:
+- For commit range: `<tip>` ref from the range
+- For single commit: `<sha>`
+
+**IMPORTANT**: All subsequent steps that reference `HEAD` for diff or
+review commands (Steps 8, 8.6, 9) MUST use `$REVIEW_TIP` instead of
+`HEAD` in local modes. For remote modes (lore, msgid), set
+`$REVIEW_TIP = HEAD` (patches are applied to the current branch tip).
+
 ### Step 3: Analyze the patch series (version-aware)
 
 Read the `.cover` file (if present) and the `.mbx` file to get:
@@ -268,15 +277,18 @@ Record: `$SERIES_VERSION`, `$SUBJECT_STEM`, `$CHANGELOG` (if any).
 
 Derive branch name: `review/<short-description>` from series title.
 
-### Step 3.5: Detect and apply prerequisite patches
+### Step 3.5: Detect prerequisite patches
 
-**IMPORTANT**: Before applying the current series, check for prerequisite dependencies.
+Check for prerequisite dependencies in the `.cover` and `.mbx` files.
 
-Search for dependency indicators in the `.cover` and `.mbx` files:
+Search for dependency indicators:
 - `Based-on:` tag (usually contains message-id or lore URL)
 - `Depends-on:` tag
 - Text patterns: "depends on", "based on", "on top of", "prerequisite", "requires"
-- `In-Reply-To:` or `References:` headers (may indicate parent series)
+
+**Do NOT** use `In-Reply-To:` or `References:` headers as dependency
+indicators — these are normal threading headers present in every patch
+series and would cause false positives.
 
 Common formats:
 ```
@@ -286,35 +298,9 @@ Depends-on: [PATCH v2 0/3] Add foo support
 This series depends on the "Add bar" series posted earlier.
 ```
 
-**If dependencies are found:**
-
-1. Extract the dependency reference (message-id or URL)
-2. Inform the user: "Found prerequisite: <description>"
-3. Recursively apply prerequisites:
-   ```bash
-   # Download prerequisite
-   mkdir -p /tmp/loupe-review-<timestamp>/prereq-<n>
-   cd /tmp/loupe-review-<timestamp>/prereq-<n>
-   b4 am <prerequisite-message-id>
-
-   # Apply prerequisite patches
-   cd <repo-root>
-   git am /tmp/loupe-review-<timestamp>/prereq-<n>/*.mbx
-   ```
-4. If prerequisite application fails:
-   - Try `--3way`
-   - If still fails, inform user and ask whether to:
-     - Skip prerequisite and try current series anyway
-     - Abort review
-     - Manually resolve conflicts
-5. After all prerequisites are applied, proceed to apply current series
-
-**If no dependencies found:**
-- Proceed directly to Step 4
-
-**Note**: Some implicit dependencies may not be declared. If patch application
-fails in Step 5, suggest checking lore.kernel.org for recent related series
-that might be prerequisites.
+If dependencies are found, extract the dependency references (message-id
+or URL) and record them for Step 4.5. If no dependencies, proceed to
+Step 4.
 
 ### Step 4: Create branch
 
@@ -333,11 +319,47 @@ git submodule update
 
 This ensures submodules are synchronized with the current branch.
 
+### Step 4.5: Apply prerequisite patches (on review branch)
+
+**IMPORTANT**: Prerequisites MUST be applied on the review branch created
+in Step 4, not on the user's original branch.
+
+If Step 3.5 found dependencies:
+
+1. Inform the user: "Found prerequisite: <description>"
+2. Download and apply prerequisites on the review branch:
+   ```bash
+   # Download prerequisite
+   mkdir -p /tmp/loupe-review-<timestamp>/prereq-<n>
+   cd /tmp/loupe-review-<timestamp>/prereq-<n>
+   b4 am <prerequisite-message-id>
+
+   # Apply prerequisite patches ON THE REVIEW BRANCH
+   cd <repo-root>
+   git am /tmp/loupe-review-<timestamp>/prereq-<n>/*.mbx /tmp/loupe-review-<timestamp>/prereq-<n>/*.mbox 2>/dev/null
+   ```
+3. If prerequisite application fails:
+   - Try `--3way`
+   - If still fails, inform user and ask whether to:
+     - Skip prerequisite and try current series anyway
+     - Abort review
+     - Manually resolve conflicts
+4. After all prerequisites are applied, proceed to Step 5
+
+**Note**: Some implicit dependencies may not be declared. If patch application
+fails in Step 5, suggest checking lore.kernel.org for recent related series
+that might be prerequisites.
+
 ### Step 5: Apply patches
 
+Apply patches from the download directory. Match both `.mbx` (from b4)
+and `.mbox` (from curl fallback):
+
 ```bash
-git am /tmp/loupe-review-<timestamp>/*.mbx
+git am /tmp/loupe-review-<timestamp>/*.mbx /tmp/loupe-review-<timestamp>/*.mbox 2>/dev/null
 ```
+
+If neither glob matches any files, check for `.patch` files as well.
 
 On failure: show error, `git am --abort`, retry with `--3way`.
 Still failing: ask user.
@@ -588,6 +610,11 @@ Where `<base_branch>` is:
 - For mode `commit`: the base branch
 - For mode `range`: the `<base>` ref from the range
 
+**Local mode note**: For `commit` and `range` modes, if `$REVIEW_TIP`
+is not the current `HEAD`, the codex review command should be adjusted
+to review the correct range. Use `codex exec` with an explicit diff
+range instead of `codex review --base`.
+
 The codex review runs in background while the current agent proceeds with
 Step 9. Its output will be collected in Step 9.5.
 
@@ -604,8 +631,8 @@ blind spots and improves issue detection.
 
 First, gather the basic diff information:
 
-1. `git log --oneline <base_branch>..HEAD`
-2. `git diff <base_branch>..HEAD --stat`
+1. `git log --oneline <base_branch>..$REVIEW_TIP`
+2. `git diff <base_branch>..$REVIEW_TIP --stat`
 3. `git show <hash>` for each commit
 
 Then execute the following review stages sequentially:
@@ -694,7 +721,7 @@ Review ALL findings from stages A–D and apply strict quality control:
 
 Run checkpatch on each patch:
 ```bash
-git format-patch <base_branch>..HEAD -o /tmp/loupe-review-<timestamp>/checkpatch/
+git format-patch <base_branch>..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
 ./scripts/checkpatch.pl /tmp/loupe-review-<timestamp>/checkpatch/*.patch
 ```
 

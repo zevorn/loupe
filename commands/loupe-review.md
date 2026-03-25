@@ -390,7 +390,15 @@ If Step 3.5 found dependencies:
      - Skip prerequisite and try current series anyway
      - Abort review
      - Manually resolve conflicts
-4. After all prerequisites are applied, proceed to Step 5
+4. After all prerequisites are applied, **update `$REVIEW_BASE`** to
+   the current HEAD so that the review range excludes prerequisite
+   commits:
+   ```bash
+   $REVIEW_BASE = $(git rev-parse HEAD)
+   ```
+   This ensures `$REVIEW_BASE..$REVIEW_TIP` in Steps 9/checkpatch
+   covers only the current series, not the prerequisites.
+5. Proceed to Step 5
 
 **Note**: Some implicit dependencies may not be declared. If patch application
 fails in Step 5, suggest checking lore.kernel.org for recent related series
@@ -454,6 +462,12 @@ After presenting the summary, proceed directly to code review (do NOT ask
 the user for permission to continue).
 
 ### Step 7: Patchwork & mailing list context collection
+
+**Local mode** (`commit`/`range`): **Skip this entire step.** Local
+commits have no message-id, so Patchwork and lore queries are not
+applicable. Proceed directly to Step 8.
+
+For remote modes (`lore`/`msgid`/`search`):
 
 Before reviewing the code, gather external context from Patchwork and the
 mailing list archive. This surfaces prior reviewer feedback, version history,

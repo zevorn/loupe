@@ -652,13 +652,18 @@ WebFetch: $PATCHWORK_BASE/series/$SERIES_ID/
 ```
 
 Otherwise, query by message-id (URL-encoded). Try patches first, then
-fall back to series (cover letters are stored as series, not patches):
+covers, then series list:
 ```
-# Try as a patch first
+# 1. Try as a patch
 WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>
 
-# If empty result (likely a cover letter), try as a series
-WebFetch: $PATCHWORK_BASE/series/?project=$MAILING_LIST&msgid=<url-encoded-message-id>
+# 2. If empty (may be a cover letter), try the covers endpoint
+WebFetch: $PATCHWORK_BASE/covers/?project=$MAILING_LIST&msgid=<url-encoded-message-id>
+# The cover response includes series[0].id — use this to get the series.
+
+# 3. If still empty, try listing series directly
+WebFetch: $PATCHWORK_BASE/series/?project=$MAILING_LIST
+# and filter client-side by matching cover_letter.msgid
 ```
 
 From a **Patchwork patches** response, extract:
@@ -692,20 +697,26 @@ subsequent substeps.
 
 #### 7b: Collect review comments across the whole series
 
-Comments, R-b tags, and blockers may be on any patch in the series,
-not just the one found in 7a. Query all patches in the series.
+Comments, R-b tags, and blockers may be on any patch OR the cover letter.
+Maintainers often put series-level feedback on the cover letter, not
+individual patches. Query the full series including the cover.
 
 If `$CONTEXT_BACKEND = "patchwork"`:
-1. First, list all patches in the series:
+1. First, list the series to get patches and cover letter:
    ```
    WebFetch: $PATCHWORK_BASE/series/<series_id>/
    ```
-   Extract the list of patch IDs from the `patches` array.
+   Extract patch IDs from the `patches` array, and `cover_letter.id`
+   if present.
 2. For **each** patch ID, fetch comments:
    ```
    WebFetch: $PATCHWORK_BASE/patches/<patch_id>/comments/
    ```
-3. Aggregate all comments across patches.
+3. If the series has a cover letter, also fetch its comments:
+   ```
+   WebFetch: $PATCHWORK_BASE/covers/<cover_letter_id>/comments/
+   ```
+4. Aggregate all comments across patches and cover letter.
 
 If `$CONTEXT_BACKEND = "patchew"`:
 ```

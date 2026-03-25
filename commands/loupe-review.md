@@ -514,8 +514,8 @@ If Step 3.5 found dependencies:
    # Then remove the original thread.mbox to prevent find from picking it up:
    if [ -f thread.mbox ]; then rm thread.mbox; fi
 
-   # Apply prerequisite patches ON THE REVIEW BRANCH
-   cd <repo-root>
+   # Apply prerequisite patches in the REVIEW WORKTREE (not repo-root)
+   cd "${REVIEW_WORKTREE}"
    PREREQ_DIR="/tmp/loupe-review-<timestamp>/prereq-<n>"
    PREREQ_FILES=$(find "${PREREQ_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' \) -print | sort)
    echo "${PREREQ_FILES}" | xargs git am
@@ -854,7 +854,8 @@ changes or failing on root commits.
 
 ```bash
 # Generate the diff matching $REVIEW_BASE..$REVIEW_TIP
-cd <repo_root>
+# Must run in the review worktree where patches were applied
+cd "${REVIEW_WORKTREE:-<repo_root>}"
 if [ "$ROOT_COMMIT" = "true" ]; then
     git diff-tree -p --root $REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
 else

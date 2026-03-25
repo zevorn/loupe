@@ -451,7 +451,11 @@ to Step 4.
 
 ### Step 4: Create branch
 
+First, return to the source repository root (Step 2 may have `cd`'d
+into the temp download directory):
+
 ```bash
+cd <repo_root>
 git checkout <base_branch>
 git checkout -b <branch_name>
 ```
@@ -1041,6 +1045,10 @@ Keep the entire summary under 40 lines.
 (JSON output).
 
 Generate a review reply file saved to `~/loupe/reply/`.
+
+```bash
+mkdir -p ~/loupe/reply
+```
 
 File naming: `~/loupe/reply/<series-short-name>-<version>-reply.md`
 

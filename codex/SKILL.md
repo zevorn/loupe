@@ -40,4 +40,5 @@ This skill automatically detects the environment:
 
 ## Workflow Reference
 
-The complete review workflow is defined in `commands/loupe-review.md` in the loupe repository. Follow all steps as documented there.
+The complete review workflow is defined in `loupe-review.md`, installed
+alongside this skill file. Follow all steps as documented there.

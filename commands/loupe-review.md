@@ -118,7 +118,7 @@ Use WebFetch for API queries. If WebFetch is unavailable (Codex), use
 Query the Patchwork REST API with the keywords:
 
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<keywords>&order=-date&per_page=20
+WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&q=<keywords>&order=-date&per_page=20
 ```
 
 URL-encode the keywords (spaces → `%20` or `+`).
@@ -179,7 +179,7 @@ use the cover letter's Message-Id so that b4 fetches the entire series. Query
 the series endpoint to find the cover letter:
 
 ```
-WebFetch: https://patchwork.ozlabs.org/api/series/<series_id>/
+WebFetch: $PATCHWORK_BASE/series/<series_id>/
 ```
 
 Extract `cover_letter.msgid` from the response. If available, use it as the
@@ -272,10 +272,13 @@ Set `$REVIEW_TIP` and `$REVIEW_BASE` for subsequent diff/review commands:
 All subsequent steps that use `<base_branch>..$REVIEW_TIP` MUST use
 `$REVIEW_BASE..$REVIEW_TIP` instead for local modes.
 
-**IMPORTANT**: All subsequent steps that reference `HEAD` for diff or
-review commands (Steps 8, 8.6, 9) MUST use `$REVIEW_TIP` instead of
-`HEAD` in local modes. For remote modes (lore, msgid), set
-`$REVIEW_TIP = HEAD` (patches are applied to the current branch tip).
+**IMPORTANT**: All subsequent steps that use diff/review commands MUST
+use `$REVIEW_BASE..$REVIEW_TIP` instead of hardcoded refs.
+
+For remote modes (lore, msgid), after branch creation and patch
+application in Steps 4-5, set:
+- `$REVIEW_BASE = <base_branch>` (the branch checked out before applying)
+- `$REVIEW_TIP = HEAD` (patches are applied to the current branch tip)
 
 ### Step 3: Analyze the patch series (version-aware)
 
@@ -453,10 +456,17 @@ best-effort.
 
 #### 7a: Find the patch on Patchwork
 
+Determine the Patchwork instance based on `$MAILING_LIST`:
+- `qemu-devel` → `https://patchwork.ozlabs.org/api/` (project: `qemu-devel`)
+- `linux-*`, `kvm`, `kvmarm` → `https://patchwork.kernel.org/api/` (project: `$MAILING_LIST`)
+- Other → try `patchwork.kernel.org` first, fall back to `patchwork.ozlabs.org`
+
+Set `$PATCHWORK_BASE` to the selected instance URL.
+
 Query the Patchwork REST API to locate the current series:
 
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>
+WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&msgid=<message-id>
 ```
 
 From the response, extract:
@@ -466,16 +476,16 @@ From the response, extract:
 - `series[0].id` — series ID for further queries
 - `check` — CI check status
 
-If the patch is not found on patchwork.ozlabs.org, try the alternative:
+If the patch is not found on the primary instance, try the alternative:
 ```
-WebFetch: https://patchew.org/api/v1/projects/qemu/series/?message_id=<message-id>
+WebFetch: https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>
 ```
 
 #### 7b: Collect review comments from Patchwork
 
 For each patch ID found in 7a:
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/<patch_id>/comments/
+WebFetch: $PATCHWORK_BASE/patches/<patch_id>/comments/
 ```
 
 Extract:
@@ -504,7 +514,7 @@ Use `$SERIES_VERSION` and `$SUBJECT_STEM` from Step 3a. If version > 1:
 1. Use the subject stem (already cleaned in Step 3a) to search for earlier
    versions on Patchwork:
    ```
-   WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<subject_stem>&order=-date&per_page=15
+   WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&q=<subject_stem>&order=-date&per_page=15
    ```
 
 2. For each earlier version found, fetch its comments (7b) to understand:
@@ -529,7 +539,7 @@ Identify the subsystem from modified file paths (e.g., `hw/i386/` →
 
 Search Patchwork for recent activity in the same area:
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<subsystem-keyword>&state=*&order=-date&per_page=10
+WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&q=<subsystem-keyword>&state=*&order=-date&per_page=10
 ```
 
 Focus on:
@@ -633,26 +643,24 @@ This step launches a parallel review if the current mode supports it.
 - `$REVIEW_MODE = "codex-dual"` → Launch **Agent-2** (second Codex) in
   background. Agent-1 (current agent) continues with Step 9.
 
-**For claude+codex and codex-dual modes**, launch codex review in background:
+**For claude+codex and codex-dual modes**, launch codex review in background.
+
+Use `$REVIEW_BASE` as the base ref to ensure the review scope matches
+the primary review:
+
 ```bash
 # Use Bash tool with run_in_background=true
 cd <repo_root>
-codex review --base <base_branch> \
+codex review --base $REVIEW_BASE \
     -c "model=gpt-5.4" \
     -c "review_model=gpt-5.4" \
     -c "model_reasoning_effort=high" \
     > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
 ```
 
-Where `<base_branch>` is:
-- For modes `lore`, `msgid`: the base branch (default: `master`)
-- For mode `commit`: the base branch
-- For mode `range`: the `<base>` ref from the range
-
-**Local mode note**: For `commit` and `range` modes, if `$REVIEW_TIP`
-is not the current `HEAD`, the codex review command should be adjusted
-to review the correct range. Use `codex exec` with an explicit diff
-range instead of `codex review --base`.
+This uses the same `$REVIEW_BASE` set in Step 2b (local modes) or
+after Step 5 (remote modes), ensuring Codex reviews exactly the same
+commit range as the primary reviewer.
 
 The codex review runs in background while the current agent proceeds with
 Step 9. Its output will be collected in Step 9.5.

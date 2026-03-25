@@ -44,19 +44,34 @@ First, scan for and extract all flags (before parsing positional args):
 - If `--output-json <path>` is present, set `$OUTPUT_JSON_PATH=<path>` and
   remove both tokens from args.
 
-After flag extraction, parse remaining positional args:
-- source (first arg, required)
-- base branch (second arg, default: `master`)
+After flag extraction, parse remaining positional args. The parsing is
+mode-dependent — first attempt to detect the input mode from the first
+arg, then decide how to consume the rest:
 
-Detect the input mode:
+- If the first arg is a lore URL, Message-Id, commit range, or local
+  commit → it is the `source`. The second arg (if any) is `base_branch`
+  (default: `master`).
+- If the first arg does not match any of the above → **all remaining
+  positional args are joined as subject search keywords** (e.g.,
+  `riscv iommu fix` → search for `"riscv iommu fix"`).
+
+Detect the input mode (test the first positional arg):
 
 1. **lore URL**: Starts with `https://lore.kernel.org/`. Extract Message-Id
    and mailing list name from the URL path.
    Example: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz`
    → `<msgid>`, `$MAILING_LIST = "qemu-devel"`
    The list name is the first path segment after the hostname.
-2. **Message-Id**: Contains `@` but is not a URL. Strip angle brackets if
-   present. To determine `$MAILING_LIST`, query lore's cross-list search:
+2. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
+   base and tip refs.
+3. **Local commit**: A single SHA or ref. Verify with `git rev-parse <ref>`.
+   If `git rev-parse` succeeds, this is a local commit. (This check MUST
+   come before Message-Id detection, because refs like `HEAD@{1}` or
+   `main@{upstream}` contain `@` but are valid git refs, not Message-Ids.)
+   If `git rev-parse` fails, fall through to mode 4.
+4. **Message-Id**: Contains `@` but is not a URL and not a valid git ref.
+   Strip angle brackets if present. To determine `$MAILING_LIST`, query
+   lore's cross-list search:
    ```
    https://lore.kernel.org/all/<message-id>/
    ```
@@ -64,13 +79,9 @@ Detect the input mode:
    `lore.kernel.org/linux-riscv/...`). Extract the list name from the
    resolved URL. If the query fails or the list cannot be determined,
    fall back to `qemu-devel`.
-3. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
-   base and tip refs.
-4. **Local commit**: A single SHA or ref. Verify with `git rev-parse <ref>`.
-   If `git rev-parse` fails, this is NOT a local commit — fall through to
-   mode 5.
-5. **Subject search**: Any input that does not match modes 1–4. Treat the
-   entire source string as search keywords.
+5. **Subject search**: Any input that does not match modes 1–4. Join
+   **all remaining positional args** as the search string (e.g.,
+   `riscv iommu fix` → search keywords `"riscv iommu fix"`).
 
 If no arguments provided, ask the user for the source.
 
@@ -289,8 +300,11 @@ to Step 6 (intent summary).
 
 Set `$REVIEW_TIP` and `$REVIEW_BASE` for subsequent diff/review commands:
 - For commit range: `$REVIEW_BASE = <base>`, `$REVIEW_TIP = <tip>`
-- For single commit: `$REVIEW_BASE = <sha>^`, `$REVIEW_TIP = <sha>`
-  (This ensures only the single commit is reviewed, not its ancestors.)
+- For single commit: `$REVIEW_TIP = <sha>`. For `$REVIEW_BASE`:
+  - If `<sha>` has a parent: `$REVIEW_BASE = <sha>^`
+  - If `<sha>` is a root commit (no parent, e.g., `git rev-parse <sha>^`
+    fails): `$REVIEW_BASE = $(git hash-object -t tree /dev/null)` (the
+    empty tree hash), so `git diff` shows the full initial commit.
 
 All subsequent steps that use `<base_branch>..$REVIEW_TIP` MUST use
 `$REVIEW_BASE..$REVIEW_TIP` instead for local modes.

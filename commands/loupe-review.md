@@ -64,11 +64,15 @@ Detect the input mode (test the first positional arg):
    The list name is the first path segment after the hostname.
 2. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
-3. **Local commit**: A single SHA or ref. Verify with `git rev-parse <ref>`.
-   If `git rev-parse` succeeds, this is a local commit. (This check MUST
-   come before Message-Id detection, because refs like `HEAD@{1}` or
-   `main@{upstream}` contain `@` but are valid git refs, not Message-Ids.)
-   If `git rev-parse` fails, fall through to mode 4.
+3. **Local commit**: Only if there are **at most 2 positional args**
+   (source + optional base_branch). Verify the first arg with
+   `git rev-parse <ref>`. If it succeeds, this is a local commit.
+   (This check MUST come before Message-Id detection, because refs
+   like `HEAD@{1}` or `main@{upstream}` contain `@` but are valid
+   git refs, not Message-Ids.)
+   If `git rev-parse` fails, OR if there are **3+ positional args**,
+   fall through to mode 4. This prevents `master fix bug` from being
+   misclassified as a commit review of `master`.
 4. **Message-Id**: Contains `@` but is not a URL and not a valid git ref.
    Strip angle brackets if present. To determine `$MAILING_LIST`, query
    lore's cross-list search:
@@ -374,9 +378,20 @@ Depends-on: [PATCH v2 0/3] Add foo support
 This series depends on the "Add bar" series posted earlier.
 ```
 
-If dependencies are found, extract the dependency references (message-id
-or URL) and record them for Step 4.5. If no dependencies, proceed to
-Step 4.
+If dependencies are found, extract the dependency references and resolve
+them to message-ids for Step 4.5:
+
+- **Message-Id or lore URL**: use directly.
+- **Subject text only** (e.g., `Depends-on: [PATCH v2 0/3] Add foo`):
+  search Patchwork for the subject to find its message-id:
+  ```
+  $PATCHWORK_BASE/patches/?project=$MAILING_LIST&q=<subject keywords>&order=-date&per_page=5
+  ```
+  Pick the best match by subject similarity and extract its `msgid`.
+  If search fails, inform the user and ask for the message-id manually.
+
+Record resolved message-ids for Step 4.5. If no dependencies, proceed
+to Step 4.
 
 ### Step 4: Create branch
 
@@ -732,7 +747,11 @@ is not the current branch tip):
 ```bash
 # Generate the diff and feed it to codex exec for review
 cd <repo_root>
-git diff $REVIEW_BASE..$REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
+if [ "$ROOT_COMMIT" = "true" ]; then
+    git diff-tree -p --root $REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
+else
+    git diff $REVIEW_BASE..$REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
+fi
 codex exec "Review the following code diff for bugs, security issues, \
     and correctness problems. Output findings with [P0-9] severity markers." \
     < /tmp/loupe-review-<timestamp>/review.diff \
@@ -1028,8 +1047,15 @@ Key rules:
 | R-b: / A-b: / T-b: | Reviewed-by / Acked-by / Tested-by |
 | NAK | Negative Acknowledgment (reject) |
 
+Before generating any reply, determine the reviewer's identity:
+```bash
+$REVIEWER_NAME = $(git config user.name)
+$REVIEWER_EMAIL = $(git config user.email)
+```
+If not set, ask the user for their name and email.
+
 Also use conventions like:
-- `Reviewed-by: Chao Liu <chao.liu.zevorn@gmail.com>` for clean patches
+- `Reviewed-by: $REVIEWER_NAME <$REVIEWER_EMAIL>` for clean patches
 - Bare `LGTM.` when a patch is obviously correct
 - `s/ELFDATA2LSB/info->is_big_endian ? ELFDATA2MSB : ELFDATA2LSB/`
   instead of "please change ELFDATA2LSB to a conditional expression"
@@ -1084,7 +1110,7 @@ Good patterns:
 - `On <date>, <author> wrote:` header for each patch.
 - Quote with `> ` prefix. Use `[...]` to skip irrelevant hunks.
 - Place comments directly below the relevant quoted line(s).
-- End each per-patch reply with `Thanks,\nChao Liu`.
+- End each per-patch reply with `Thanks,\n$REVIEWER_NAME`.
 - Wrap reply body in markdown fenced code block (` ``` `).
 
 #### 11e: Codex attribution
@@ -1131,7 +1157,7 @@ should follow MPP, not current priv. Masked today
 (all bits identical at reset) but worth fixing.
 
 Thanks,
-Chao Liu
+$REVIEWER_NAME
 ` ` `
 ```
 

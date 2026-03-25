@@ -561,10 +561,11 @@ If Step 3.5 found dependencies:
        PREREQ_TMP="/tmp/loupe-review-<timestamp>/prereq-<n>"
        mkdir -p "${PREREQ_TMP}/split"
 
-       # Split mbox into individual message files
-       formail -ds sh -c 'cat > "${PREREQ_TMP}/split/msg-$(printf "%04d" $FILSTRSTRSTR)"' \
-           < thread.mbox 2>/dev/null || csplit -z thread.mbox '/^From /' '{*}' \
-           --prefix="${PREREQ_TMP}/split/msg-" --suffix-format="%04d"
+       # Split mbox into individual message files using csplit
+       csplit -z -f "${PREREQ_TMP}/split/msg-" -b "%04d" \
+           thread.mbox '/^From /' '{*}' 2>/dev/null || \
+       # Fallback: if csplit fails, copy whole file as single message
+       cp thread.mbox "${PREREQ_TMP}/split/msg-0000"
 
        # Filter: keep [PATCH]/[RFC] with diff body, exclude cover letters (0/N)
        for msg in "${PREREQ_TMP}"/split/msg-*; do
@@ -1115,9 +1116,9 @@ cd "${REVIEW_WORKTREE:-$(git rev-parse --show-toplevel)}"
 # Generate patch files for checkpatch
 mkdir -p /tmp/loupe-review-<timestamp>/checkpatch/
 if [ -f /tmp/loupe-review-<timestamp>/full-range.patch ]; then
-    # Merge commit range: use the already-generated diff
+    # Merge commit range: copy the already-generated diff with .patch extension
     cp /tmp/loupe-review-<timestamp>/full-range.patch \
-       /tmp/loupe-review-<timestamp>/checkpatch/
+       /tmp/loupe-review-<timestamp>/checkpatch/0001-full-range.patch
 elif [ "$ROOT_COMMIT" = "true" ]; then
     git format-patch --root $REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
 else

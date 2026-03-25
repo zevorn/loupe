@@ -294,16 +294,16 @@ cover letters, and non-patch messages that will break `git am`.
 Filtering steps (execute immediately after download):
 1. Split `thread.mbox` into individual messages
 2. Keep only messages whose Subject contains `[PATCH` or `[RFC`
-3. Discard messages that have no diff body (pure text replies)
-4. Sort remaining messages by subject index (`[PATCH n/m]`)
-5. Concatenate the sorted, filtered messages into a new file:
+3. **Extract** the cover letter (Subject contains `0/N` pattern) and
+   save it as `.cover` in the download directory. Step 3 needs this
+   for series title, version, and changelog extraction.
+4. Discard messages that have no diff body (pure text replies) and
+   the cover letter from the patch set
+5. Sort remaining messages by subject index (`[PATCH n/m]`)
+6. Concatenate the sorted, filtered messages into a new file:
    `filtered.mbox` in the same directory
-6. Remove or rename the original `thread.mbox` so Step 5 picks up
+7. Remove or rename the original `thread.mbox` so Step 5 picks up
    only `filtered.mbox`
-
-The cover letter (`0/m` index or no diff body) should be saved
-separately as `.cover` for Step 3 metadata extraction but NOT
-included in the file passed to `git am`.
 
 **Fallback 2 — Single patch via lore raw endpoint**:
 ```bash
@@ -603,17 +603,20 @@ If Step 3.5 found dependencies:
    # Apply prerequisite patches in the REVIEW WORKTREE (not repo-root)
    cd "${REVIEW_WORKTREE}"
    PREREQ_DIR="/tmp/loupe-review-<timestamp>/prereq-<n>"
-   PREREQ_FILES=$(find "${PREREQ_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' \) -print | sort)
+   # Find non-empty patch files only (skip zero-byte filtered.mbox)
+   PREREQ_FILES=$(find "${PREREQ_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' \) -size +0 -print | sort)
    if [ -z "${PREREQ_FILES}" ]; then
-       echo "Error: No prerequisite patch files found in ${PREREQ_DIR}"
-       echo "Prerequisite download may have failed. Skipping prerequisite."
+       echo "Warning: No prerequisite patch files found in ${PREREQ_DIR}"
+       echo "Prerequisite download or filtering may have failed. Skipping."
    else
        echo "${PREREQ_FILES}" | xargs git am
    fi
    ```
 3. If prerequisite application fails:
-   - Try `--3way`
-   - If still fails, inform user and ask whether to:
+   - First run `git am --abort` to clean up the failed apply state
+   - Retry with `--3way`: `echo "${PREREQ_FILES}" | xargs git am --3way`
+   - If `--3way` also fails, run `git am --abort` again, then inform
+     user and ask whether to:
      - Skip prerequisite and try current series anyway
      - Abort review
      - Manually resolve conflicts

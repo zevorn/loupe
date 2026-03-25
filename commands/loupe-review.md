@@ -272,10 +272,18 @@ git format-patch -1 <sha> -o /tmp/loupe-review-<timestamp>/
 ```
 
 This produces numbered `.patch` files ready for review. There is no `.mbx`
-or `.cover` file in this mode — extract series info directly from the
-patch files and commit messages.
+or `.cover` file in this mode.
 
-After export, skip Step 3.5 (prerequisite detection) and Step 4 (branch
+After export, proceed to **Step 3 (metadata extraction)** to populate
+`$SERIES_VERSION`, `$SUBJECT_STEM`, title, author, and patch count.
+For local mode, extract these from the `.patch` files and commit messages:
+- **Title**: first commit's subject line (or range description)
+- **Author**: from `git log --format='%an <%ae>' -1 $REVIEW_TIP`
+- **Version**: `v1` (local commits have no version tag unless subject
+  contains `[PATCH vN]`)
+- **Patch count**: number of `.patch` files produced
+
+Then skip Step 3.5 (prerequisite detection) and Step 4 (branch
 creation) — the commits are already in the local repo. Proceed directly
 to Step 6 (intent summary).
 

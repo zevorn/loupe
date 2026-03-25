@@ -19,13 +19,24 @@ Supersedes [patch-review](https://github.com/zevorn/patch-review). Designed for 
 
 ## Installation
 
-### Claude Code Plugin (recommended)
+### Claude Code (recommended)
+
+Clone the repo and use `--plugin-dir` to register it as a local plugin:
 
 ```bash
-claude plugin add github:zevorn/loupe
+git clone git@github.com:zevorn/loupe.git ~/loupe
+claude mcp add --plugin-dir ~/loupe
 ```
 
-After installation:
+Or install the skill file directly:
+
+```bash
+git clone git@github.com:zevorn/loupe.git
+cd loupe
+./install.sh --claude
+```
+
+After installation, use in Claude Code:
 
 ```
 /loupe-review <lore-url-or-msgid-or-commit> [base_branch] [+zh] [--ci] [--output-json <path>]
@@ -39,21 +50,10 @@ cd loupe
 ./install.sh --codex
 ```
 
-### Manual Installation
-
-```bash
-git clone git@github.com:zevorn/loupe.git
-cd loupe
-./install.sh --claude
-```
-
 ### Uninstall
 
 ```bash
-# Plugin
-claude plugin remove loupe
-
-# Manual
+# Manual install
 ./install.sh --uninstall
 ```
 

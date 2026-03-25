@@ -642,21 +642,39 @@ directly:
 WebFetch: $PATCHWORK_BASE/series/$SERIES_ID/
 ```
 
-Otherwise, query by message-id:
+Otherwise, query by message-id (URL-encoded). Try patches first, then
+fall back to series (cover letters are stored as series, not patches):
 ```
-WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&msgid=<message-id>
+# Try as a patch first
+WebFetch: $PATCHWORK_BASE/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>
+
+# If empty result (likely a cover letter), try as a series
+WebFetch: $PATCHWORK_BASE/series/?project=$MAILING_LIST&msgid=<url-encoded-message-id>
 ```
 
-From the response, extract:
-- `id` — needed for comment queries
+From a **Patchwork patches** response, extract:
+- `id` — patch ID for comment queries
 - `state` — patch status (New / Under Review / Accepted / Rejected / …)
 - `delegate` — assigned maintainer (if any)
-- `series[0].id` — series ID for further queries
+- `series[0].id` — series ID for series-wide queries
 - `check` — CI check status
 
-If the patch is not found on the primary instance, try the fallback:
-- For `qemu-devel`: use Patchew (`https://patchew.org/api/v1/projects/qemu/series/?message_id=<message-id>`)
-- For other lists: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>`
+From a **Patchwork series** response, extract:
+- `id` — series ID (use for 7b queries)
+- `patches[]` — list of patch objects in the series
+- Use the first patch's `state`, `delegate`, `check` as representative
+
+If nothing found on the primary instance, try the fallback:
+- For `qemu-devel`: use Patchew (`https://patchew.org/api/v1/projects/qemu/series/?message_id=<url-encoded-message-id>`)
+- For other lists: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>`
+
+**Patchew response mapping** (different field structure):
+- `id` → series ID
+- `status` → maps to Patchwork `state`
+- `patches[].msgid` → individual patch message-ids
+- `results` → CI/test results (maps to `check`)
+- `properties.reviewers` → Reviewed-by tags
+- No `delegate` equivalent — leave as unknown
 
 Record which backend returned data: set `$CONTEXT_BACKEND` to
 `"patchwork"` or `"patchew"`. This determines which API to use in
@@ -693,9 +711,10 @@ Extract:
 
 #### 7c: Fetch mailing list thread discussion from lore
 
-Retrieve the full discussion thread from lore.kernel.org:
+Retrieve the full discussion thread from lore.kernel.org (URL-encode
+the message-id):
 ```
-WebFetch: https://lore.kernel.org/$MAILING_LIST/<message-id>/t/
+WebFetch: https://lore.kernel.org/$MAILING_LIST/<url-encoded-message-id>/t/
 ```
 
 Look for:

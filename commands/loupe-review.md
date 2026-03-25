@@ -854,8 +854,9 @@ changes or failing on root commits.
 
 ```bash
 # Generate the diff matching $REVIEW_BASE..$REVIEW_TIP
-# Must run in the review worktree where patches were applied
-cd "${REVIEW_WORKTREE:-<repo_root>}"
+# Remote modes: run in $REVIEW_WORKTREE (created in Step 4)
+# Local modes: run in the repository working directory (no worktree created)
+cd "${REVIEW_WORKTREE:-$(git rev-parse --show-toplevel)}"
 if [ "$ROOT_COMMIT" = "true" ]; then
     git diff-tree -p --root $REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
 else
@@ -864,7 +865,10 @@ fi
 
 # Use Bash tool with run_in_background=true
 codex exec "Review the following code diff for bugs, security issues, \
-    and correctness problems. Output findings with [P0-9] severity markers." \
+    and correctness problems. For each finding, output: \
+    [P0-9] <title> - <file_path>:<line_range> \
+    followed by a detailed explanation. The file path and line range \
+    are required for cross-referencing." \
     < /tmp/loupe-review-<timestamp>/review.diff \
     > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
 ```

@@ -30,7 +30,7 @@ Then execute the loupe-review workflow from `loupe-review.md` installed alongsid
 - `review riscv iommu fix`
 - `review HEAD`
 - `review master..HEAD`
-- `review abc1234 --base stable-9.1 --ci --output-json /tmp/out/`
+- `review <20240101120000.12345-1-author@example.com> --ci --output-json /tmp/out/`
 
 ## Review Modes
 

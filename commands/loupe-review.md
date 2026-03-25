@@ -417,6 +417,13 @@ Record: `$SERIES_VERSION`, `$SUBJECT_STEM`, `$CHANGELOG` (if any).
 #### 3b: Derive branch name
 
 Derive branch name: `review/<short-description>` from series title.
+**Sanitize** the title to produce a valid git ref name:
+- Lowercase, replace spaces and colons with hyphens
+- Remove characters not allowed in git refs (`~`, `^`, `?`, `*`, `[`, `\`)
+- Collapse consecutive hyphens, strip leading/trailing hyphens
+- Truncate to 50 characters
+
+Example: `"hw/riscv/iommu: IPSR PMIP support"` → `review/hw-riscv-iommu-ipsr-pmip-support`
 
 ### Step 3.5: Detect prerequisite patches
 
@@ -506,8 +513,9 @@ If Step 3.5 found dependencies:
            | sed 's|https://lore.kernel.org/||;s|/.*||')
        PREREQ_LIST="${PREREQ_LIST:-$MAILING_LIST}"
    fi
+   # URL-encode the prereq message-id before use in URLs
    b4 am <prerequisite-message-id> || \
-     curl -sL "https://lore.kernel.org/${PREREQ_LIST}/<prerequisite-message-id>/t.mbox.gz" \
+     curl -sL "https://lore.kernel.org/${PREREQ_LIST}/<url-encoded-prereq-msgid>/t.mbox.gz" \
        | gunzip > thread.mbox
    # If thread.mbox was used, filter it (same as Step 2 fallback):
    # keep only [PATCH]/[RFC] subjects, sort by index, save as filtered.mbox
@@ -518,7 +526,12 @@ If Step 3.5 found dependencies:
    cd "${REVIEW_WORKTREE}"
    PREREQ_DIR="/tmp/loupe-review-<timestamp>/prereq-<n>"
    PREREQ_FILES=$(find "${PREREQ_DIR}" -maxdepth 1 \( -name '*.mbx' -o -name '*.mbox' \) -print | sort)
-   echo "${PREREQ_FILES}" | xargs git am
+   if [ -z "${PREREQ_FILES}" ]; then
+       echo "Error: No prerequisite patch files found in ${PREREQ_DIR}"
+       echo "Prerequisite download may have failed. Skipping prerequisite."
+   else
+       echo "${PREREQ_FILES}" | xargs git am
+   fi
    ```
 3. If prerequisite application fails:
    - Try `--3way`

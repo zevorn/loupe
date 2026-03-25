@@ -36,7 +36,7 @@ Format: `<source> [base_branch] [+zh] [--ci] [--output-json <path>]`
 
 ### Step 1: Parse arguments and detect input mode
 
-Extract from `$ARGUMENTS`:
+Extract from the user-provided arguments:
 
 First, scan for and extract flags:
 - If `--ci` is present, set `$CI_MODE=true` and remove it from args.

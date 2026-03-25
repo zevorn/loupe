@@ -86,5 +86,5 @@ if $do_uninstall; then
     exit 0
 fi
 
-$do_claude && install_claude
-$do_codex && install_codex
+if $do_claude; then install_claude; fi
+if $do_codex; then install_codex; fi

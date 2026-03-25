@@ -837,8 +837,12 @@ pure code reading cannot:
 
 ```bash
 # For each file touched by the series:
-# Use $REVIEW_BASE for local modes, <base_branch> for remote modes
-git log --oneline -20 $REVIEW_BASE -- <file_path>
+if [ "$ROOT_COMMIT" = "true" ]; then
+    # Root commit has no prior history — skip or show empty
+    echo "Root commit: no prior history for <file_path>"
+else
+    git log --oneline -20 $REVIEW_BASE -- <file_path>
+fi
 ```
 
 Focus on:

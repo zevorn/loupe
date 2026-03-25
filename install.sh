@@ -28,7 +28,7 @@ EOF
 }
 
 install_claude() {
-    echo "Installing for Claude Code (manual)..."
+    echo "Installing for Claude Code..."
     mkdir -p "${CLAUDE_CMD_DIR}"
     cp "${SKILL_FILE}" "${CLAUDE_CMD_DIR}/loupe-review.md"
     echo "  -> ${CLAUDE_CMD_DIR}/loupe-review.md"

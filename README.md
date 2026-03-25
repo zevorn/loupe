@@ -71,6 +71,8 @@ cd loupe
 |------|-------------|
 | `+zh` | Include Chinese analysis section |
 | `--ci` | CI mode: single agent, no interaction, JSON output |
+| `--base <branch>` | Explicit base branch (useful for subject search) |
+| `--search` | Force subject search mode (bypass ref detection) |
 | `--output-json <path>` | JSON output path (directory or file) |
 
 ### Examples

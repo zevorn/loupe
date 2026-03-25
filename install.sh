@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # install.sh - Install loupe for Claude Code and/or Codex
 #
-# Preferred: claude plugin add github:zevorn/loupe
-# This script is for manual install or Codex-only environments.
+# Install loupe skill for Claude Code and/or Codex environments.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

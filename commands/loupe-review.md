@@ -727,39 +727,29 @@ This step launches a parallel review if the current mode supports it.
 
 **For claude+codex and codex-dual modes**, launch codex review in background.
 
-Use `$REVIEW_BASE` and `$REVIEW_TIP` to ensure the review scope matches
-the primary review exactly.
+Always use an explicit diff to ensure Codex reviews exactly the same
+commit range as the primary reviewer, without including uncommitted
+changes or failing on root commits.
 
-**If `$REVIEW_TIP` is `HEAD`** (remote modes, or local mode where tip
-is the current HEAD):
 ```bash
-# Use Bash tool with run_in_background=true
-cd <repo_root>
-codex review --base $REVIEW_BASE \
-    -c "model=gpt-5.4" \
-    -c "review_model=gpt-5.4" \
-    -c "model_reasoning_effort=high" \
-    > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
-```
-
-**If `$REVIEW_TIP` is NOT `HEAD`** (local commit/range where the target
-is not the current branch tip):
-```bash
-# Generate the diff and feed it to codex exec for review
+# Generate the diff matching $REVIEW_BASE..$REVIEW_TIP
 cd <repo_root>
 if [ "$ROOT_COMMIT" = "true" ]; then
     git diff-tree -p --root $REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
 else
     git diff $REVIEW_BASE..$REVIEW_TIP > /tmp/loupe-review-<timestamp>/review.diff
 fi
+
+# Use Bash tool with run_in_background=true
 codex exec "Review the following code diff for bugs, security issues, \
     and correctness problems. Output findings with [P0-9] severity markers." \
     < /tmp/loupe-review-<timestamp>/review.diff \
     > /tmp/loupe-review-<timestamp>/codex-review.log 2>&1
 ```
 
-This ensures Codex reviews only the commits in `$REVIEW_BASE..$REVIEW_TIP`,
-not the entire branch up to HEAD.
+This approach ensures: (1) root commits work (via `diff-tree --root`),
+(2) uncommitted changes are excluded, and (3) the diff scope matches
+the primary reviewer's `$REVIEW_BASE..$REVIEW_TIP` exactly.
 
 The codex review runs in background while the current agent proceeds with
 Step 9. Its output will be collected in Step 9.5.

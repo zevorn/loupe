@@ -90,10 +90,12 @@ Detect the input mode (test the first positional arg):
    `abc1234 release-9.0` → commit+base (1st is SHA-like);
    `HEAD` → commit (single arg); `riscv iommu fix` → search (3 args).
 4. **Message-Id**: Contains `@` but is not a URL and not a valid git ref.
-   Strip angle brackets if present. To determine `$MAILING_LIST`, query
-   lore's cross-list search:
+   Strip angle brackets if present. **URL-encode** the Message-Id before
+   using it in any URL (percent-encode `/`, `+`, `=`, and other reserved
+   characters). To determine `$MAILING_LIST`, query lore's cross-list
+   search:
    ```
-   https://lore.kernel.org/all/<message-id>/
+   https://lore.kernel.org/all/<url-encoded-message-id>/
    ```
    The redirect or response will reveal the actual list (e.g.,
    `lore.kernel.org/linux-riscv/...`). Extract the list name from the
@@ -112,8 +114,10 @@ Set `$INPUT_MODE` to one of: `lore`, `msgid`, `range`, `commit`, `search`.
 Set `$MAILING_LIST` to the detected list name (default: `qemu-devel`).
 
 All subsequent lore.kernel.org URLs and Patchwork API queries MUST use
-`$MAILING_LIST` instead of hardcoded `qemu-devel`. For example:
-- lore: `https://lore.kernel.org/$MAILING_LIST/<msgid>/t.mbox.gz`
+`$MAILING_LIST` instead of hardcoded `qemu-devel`. **Always URL-encode
+Message-Ids** before embedding in URLs (percent-encode `/`, `+`, `=`,
+and other reserved chars). For example:
+- lore: `https://lore.kernel.org/$MAILING_LIST/<url-encoded-msgid>/t.mbox.gz`
 - Patchwork: `project=$MAILING_LIST`
 
 Set `$PATCHWORK_BASE` based on `$MAILING_LIST`:
@@ -450,20 +454,24 @@ them to message-ids for Step 4.5:
 Record resolved message-ids for Step 4.5. If no dependencies, proceed
 to Step 4.
 
-### Step 4: Create branch
+### Step 4: Create review worktree
 
-First, return to the source repository root (Step 2 may have `cd`'d
-into the temp download directory):
+Use `git worktree` to create an isolated review environment, avoiding
+conflicts with the user's working tree (which may have uncommitted
+changes):
 
 ```bash
 cd <repo_root>
-git checkout <base_branch>
-git checkout -b <branch_name>
+REVIEW_WORKTREE="/tmp/loupe-review-<timestamp>/worktree"
+git worktree add -b <branch_name> "${REVIEW_WORKTREE}" <base_branch>
+cd "${REVIEW_WORKTREE}"
 ```
 
-If branch exists, ask user to delete/recreate or rename.
+If the branch already exists, ask user to delete/recreate or rename.
+All subsequent steps (4.5, 5, 8, 9, etc.) operate inside
+`${REVIEW_WORKTREE}`, not the user's original working tree.
 
-After creating the branch, update submodules to match the branch state:
+After creating the worktree, update submodules to match the branch state:
 
 ```bash
 git submodule update
@@ -484,10 +492,20 @@ If Step 3.5 found dependencies:
    # Download prerequisite (same fallback strategy as Step 2)
    mkdir -p /tmp/loupe-review-<timestamp>/prereq-<n>
    cd /tmp/loupe-review-<timestamp>/prereq-<n>
-   # If the dependency reference was a full lore URL, extract its list
-   # name for the curl fallback (e.g., Based-on: https://lore.kernel.org/kvmarm/...)
-   # Otherwise default to $MAILING_LIST.
-   PREREQ_LIST="${PREREQ_LORE_LIST:-$MAILING_LIST}"
+   # Determine the prereq's mailing list:
+   # 1. If dependency was a lore URL, extract list from URL path
+   # 2. If bare Message-Id, resolve via lore.kernel.org/all/<msgid>/
+   #    (same as Step 1 mode 4 detection)
+   # 3. Fall back to $MAILING_LIST only if resolution fails
+   if [ -n "${PREREQ_LORE_LIST}" ]; then
+       PREREQ_LIST="${PREREQ_LORE_LIST}"
+   else
+       # Query lore cross-list to detect prereq's actual list
+       PREREQ_LIST=$(curl -sL -o /dev/null -w '%{url_effective}' \
+           "https://lore.kernel.org/all/<url-encoded-prereq-msgid>/" \
+           | sed 's|https://lore.kernel.org/||;s|/.*||')
+       PREREQ_LIST="${PREREQ_LIST:-$MAILING_LIST}"
+   fi
    b4 am <prerequisite-message-id> || \
      curl -sL "https://lore.kernel.org/${PREREQ_LIST}/<prerequisite-message-id>/t.mbox.gz" \
        | gunzip > thread.mbox

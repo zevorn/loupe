@@ -56,7 +56,14 @@ Detect the input mode:
    → `<msgid>`, `$MAILING_LIST = "qemu-devel"`
    The list name is the first path segment after the hostname.
 2. **Message-Id**: Contains `@` but is not a URL. Strip angle brackets if
-   present. Set `$MAILING_LIST` to default (`qemu-devel`).
+   present. To determine `$MAILING_LIST`, query lore's cross-list search:
+   ```
+   https://lore.kernel.org/all/<message-id>/
+   ```
+   The redirect or response will reveal the actual list (e.g.,
+   `lore.kernel.org/linux-riscv/...`). Extract the list name from the
+   resolved URL. If the query fails or the list cannot be determined,
+   fall back to `qemu-devel`.
 3. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
 4. **Local commit**: A single SHA or ref. Verify with `git rev-parse <ref>`.
@@ -74,6 +81,14 @@ All subsequent lore.kernel.org URLs and Patchwork API queries MUST use
 `$MAILING_LIST` instead of hardcoded `qemu-devel`. For example:
 - lore: `https://lore.kernel.org/$MAILING_LIST/<msgid>/t.mbox.gz`
 - Patchwork: `project=$MAILING_LIST`
+
+Set `$PATCHWORK_BASE` based on `$MAILING_LIST`:
+- `qemu-devel` → `https://patchwork.ozlabs.org/api`
+- `linux-*`, `kvm`, `kvmarm` → `https://patchwork.kernel.org/api`
+- Other → `https://patchwork.kernel.org/api` (fall back to ozlabs if empty)
+
+This MUST be set here (not deferred to Step 7) because Step 1.5
+(subject search) needs it immediately.
 
 ### Step 1.1: Detect environment and select review mode
 
@@ -456,12 +471,7 @@ best-effort.
 
 #### 7a: Find the patch on Patchwork
 
-Determine the Patchwork instance based on `$MAILING_LIST`:
-- `qemu-devel` → `https://patchwork.ozlabs.org/api/` (project: `qemu-devel`)
-- `linux-*`, `kvm`, `kvmarm` → `https://patchwork.kernel.org/api/` (project: `$MAILING_LIST`)
-- Other → try `patchwork.kernel.org` first, fall back to `patchwork.ozlabs.org`
-
-Set `$PATCHWORK_BASE` to the selected instance URL.
+`$PATCHWORK_BASE` was already set in Step 1 based on `$MAILING_LIST`.
 
 Query the Patchwork REST API to locate the current series:
 
@@ -571,7 +581,8 @@ pure code reading cannot:
 
 ```bash
 # For each file touched by the series:
-git log --oneline -20 <base_branch> -- <file_path>
+# Use $REVIEW_BASE for local modes, <base_branch> for remote modes
+git log --oneline -20 $REVIEW_BASE -- <file_path>
 ```
 
 Focus on:

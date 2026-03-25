@@ -9,7 +9,7 @@ description: Download, apply, and review mailing list patches with multi-agent c
 
 $ARGUMENTS
 
-Format: `<source> [base_branch] [+zh] [--ci] [--base <branch>] [--output-json <path>]`
+Format: `<source> [base_branch] [+zh] [--ci] [--search] [--base <branch>] [--output-json <path>]`
 
 - `source` (required): One of the following input forms:
   - **lore URL**: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz`
@@ -50,6 +50,11 @@ First, scan for and extract all flags (before parsing positional args):
   both tokens from args. This allows specifying the base branch explicitly,
   which is especially useful in subject search mode where positional
   `base_branch` is ambiguous with search keywords.
+- If `--search` is present, set `$FORCE_SEARCH=true` and remove it from
+  args. This forces subject search mode, bypassing commit/ref detection.
+  Useful for single-keyword searches that match local ref names (e.g.,
+  `--search stable` to search for "stable" instead of reviewing the
+  `stable` branch).
 
 After flag extraction, parse remaining positional args. The parsing is
 mode-dependent — first attempt to detect the input mode from the first
@@ -64,7 +69,11 @@ arg, then decide how to consume the rest:
   `riscv iommu fix` → search for `"riscv iommu fix"`). The base
   branch comes from `--base` flag or defaults to `master`.
 
-Detect the input mode (test the first positional arg):
+Detect the input mode. If `$FORCE_SEARCH` is true, skip all detection
+and go directly to mode 5 (subject search) with all positional args
+joined as keywords.
+
+Otherwise, test the first positional arg:
 
 1. **lore URL**: Starts with `https://lore.kernel.org/`. Extract Message-Id
    and mailing list name from the URL path.
@@ -666,7 +675,8 @@ From a **Patchwork series** response, extract:
 
 If nothing found on the primary instance, try the fallback:
 - For `qemu-devel`: use Patchew (`https://patchew.org/api/v1/projects/qemu/series/?message_id=<url-encoded-message-id>`)
-- For other lists: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>`
+- For other lists where primary was `patchwork.kernel.org`: try `https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>`
+- For other lists where primary was `patchwork.ozlabs.org`: try `https://patchwork.kernel.org/api/patches/?project=$MAILING_LIST&msgid=<url-encoded-message-id>`
 
 **Patchew response mapping** (different field structure):
 - `id` → series ID
@@ -1021,10 +1031,10 @@ Review ALL findings from stages A–D and apply strict quality control:
 
 #### Checkpatch
 
-Run checkpatch on each patch. Must run from the repository root (or
-review worktree root) so `./scripts/checkpatch.pl` resolves correctly:
+Run checkpatch on each patch. For local `commit`/`range` modes, the
+worktree's `scripts/checkpatch.pl` may not match `$REVIEW_TIP`. Extract
+the script from the reviewed revision to ensure consistency:
 ```bash
-# Ensure we're at repo root
 cd "${REVIEW_WORKTREE:-$(git rev-parse --show-toplevel)}"
 
 # For root commits, use --root; otherwise use range
@@ -1033,7 +1043,16 @@ if [ "$ROOT_COMMIT" = "true" ]; then
 else
     git format-patch $REVIEW_BASE..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
 fi
-./scripts/checkpatch.pl /tmp/loupe-review-<timestamp>/checkpatch/*.patch
+
+# Use checkpatch from the reviewed revision for local modes
+if [ -n "$REVIEW_TIP" ] && [ "$REVIEW_TIP" != "HEAD" ]; then
+    git show $REVIEW_TIP:scripts/checkpatch.pl > /tmp/loupe-review-<timestamp>/checkpatch.pl 2>/dev/null \
+        && CHECKPATCH="/tmp/loupe-review-<timestamp>/checkpatch.pl" \
+        || CHECKPATCH="./scripts/checkpatch.pl"
+else
+    CHECKPATCH="./scripts/checkpatch.pl"
+fi
+perl "${CHECKPATCH}" /tmp/loupe-review-<timestamp>/checkpatch/*.patch
 ```
 
 ### Step 9.5: Collect and cross-reference parallel review

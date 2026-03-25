@@ -51,10 +51,12 @@ After flag extraction, parse remaining positional args:
 Detect the input mode:
 
 1. **lore URL**: Starts with `https://lore.kernel.org/`. Extract Message-Id
-   from the URL path.
-   Example: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz` → `<msgid>`
+   and mailing list name from the URL path.
+   Example: `https://lore.kernel.org/qemu-devel/<msgid>/t.mbox.gz`
+   → `<msgid>`, `$MAILING_LIST = "qemu-devel"`
+   The list name is the first path segment after the hostname.
 2. **Message-Id**: Contains `@` but is not a URL. Strip angle brackets if
-   present.
+   present. Set `$MAILING_LIST` to default (`qemu-devel`).
 3. **Local commit range**: Contains `..` (e.g., `master..HEAD`). Split into
    base and tip refs.
 4. **Local commit**: A single SHA or ref. Verify with `git rev-parse <ref>`.
@@ -66,6 +68,12 @@ Detect the input mode:
 If no arguments provided, ask the user for the source.
 
 Set `$INPUT_MODE` to one of: `lore`, `msgid`, `range`, `commit`, `search`.
+Set `$MAILING_LIST` to the detected list name (default: `qemu-devel`).
+
+All subsequent lore.kernel.org URLs and Patchwork API queries MUST use
+`$MAILING_LIST` instead of hardcoded `qemu-devel`. For example:
+- lore: `https://lore.kernel.org/$MAILING_LIST/<msgid>/t.mbox.gz`
+- Patchwork: `project=$MAILING_LIST`
 
 ### Step 1.1: Detect environment and select review mode
 
@@ -110,7 +118,7 @@ Use WebFetch for API queries. If WebFetch is unavailable (Codex), use
 Query the Patchwork REST API with the keywords:
 
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=qemu-devel&q=<keywords>&order=-date&per_page=20
+WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<keywords>&order=-date&per_page=20
 ```
 
 URL-encode the keywords (spaces → `%20` or `+`).
@@ -129,7 +137,7 @@ From the JSON response, extract for each result:
 If Patchwork returns no results or is unreachable, fall back to lore search:
 
 ```
-WebFetch: https://lore.kernel.org/qemu-devel/?q=<keywords>&x=A
+WebFetch: https://lore.kernel.org/$MAILING_LIST/?q=<keywords>&x=A
 ```
 
 Parse the HTML response to extract matching threads:
@@ -197,25 +205,36 @@ graduated fallback strategy instead of immediately asking the user:
 **Fallback 1 — Direct lore mbox download**:
 ```bash
 # Download the entire thread as mbox
-curl -sL "https://lore.kernel.org/qemu-devel/<message_id>/t.mbox.gz" \
+curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/t.mbox.gz" \
     | gunzip > /tmp/loupe-review-<timestamp>/thread.mbox
 
 # If the above fails (e.g., message-id encoding), try URL-encoded form
-curl -sL "https://lore.kernel.org/qemu-devel/<url_encoded_msgid>/t.mbox.gz" \
+curl -sL "https://lore.kernel.org/$MAILING_LIST/<url_encoded_msgid>/t.mbox.gz" \
     | gunzip > /tmp/loupe-review-<timestamp>/thread.mbox
 ```
 
-When using the raw mbox fallback, additional processing is needed:
-- The mbox contains the entire thread (including replies, not just patches)
-- Filter to keep only messages whose Subject matches `[PATCH` or `[RFC`
-- Sort by subject index (`[PATCH n/m]`) to ensure correct ordering
-- The cover letter is the message with index `0/m` or the one without a
-  diff body
+When using the raw mbox fallback, **you MUST filter the thread mbox
+before it can be used by Step 5**. The raw thread contains replies,
+cover letters, and non-patch messages that will break `git am`.
+
+Filtering steps (execute immediately after download):
+1. Split `thread.mbox` into individual messages
+2. Keep only messages whose Subject contains `[PATCH` or `[RFC`
+3. Discard messages that have no diff body (pure text replies)
+4. Sort remaining messages by subject index (`[PATCH n/m]`)
+5. Concatenate the sorted, filtered messages into a new file:
+   `filtered.mbox` in the same directory
+6. Remove or rename the original `thread.mbox` so Step 5 picks up
+   only `filtered.mbox`
+
+The cover letter (`0/m` index or no diff body) should be saved
+separately as `.cover` for Step 3 metadata extraction but NOT
+included in the file passed to `git am`.
 
 **Fallback 2 — Single patch via lore raw endpoint**:
 ```bash
 # For a single patch (not a series)
-curl -sL "https://lore.kernel.org/qemu-devel/<message_id>/raw" \
+curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/raw" \
     > /tmp/loupe-review-<timestamp>/patch.mbox
 ```
 
@@ -243,12 +262,15 @@ patch files and commit messages.
 
 After export, skip Step 3.5 (prerequisite detection) and Step 4 (branch
 creation) — the commits are already in the local repo. Proceed directly
-to Step 6 (intent summary), using `<base>` as the base branch for diff
-and review commands.
+to Step 6 (intent summary).
 
-Set `$REVIEW_TIP` to:
-- For commit range: `<tip>` ref from the range
-- For single commit: `<sha>`
+Set `$REVIEW_TIP` and `$REVIEW_BASE` for subsequent diff/review commands:
+- For commit range: `$REVIEW_BASE = <base>`, `$REVIEW_TIP = <tip>`
+- For single commit: `$REVIEW_BASE = <sha>^`, `$REVIEW_TIP = <sha>`
+  (This ensures only the single commit is reviewed, not its ancestors.)
+
+All subsequent steps that use `<base_branch>..$REVIEW_TIP` MUST use
+`$REVIEW_BASE..$REVIEW_TIP` instead for local modes.
 
 **IMPORTANT**: All subsequent steps that reference `HEAD` for diff or
 review commands (Steps 8, 8.6, 9) MUST use `$REVIEW_TIP` instead of
@@ -434,7 +456,7 @@ best-effort.
 Query the Patchwork REST API to locate the current series:
 
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=qemu-devel&msgid=<message-id>
+WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&msgid=<message-id>
 ```
 
 From the response, extract:
@@ -466,7 +488,7 @@ Extract:
 
 Retrieve the full discussion thread from lore.kernel.org:
 ```
-WebFetch: https://lore.kernel.org/qemu-devel/<message-id>/t/
+WebFetch: https://lore.kernel.org/$MAILING_LIST/<message-id>/t/
 ```
 
 Look for:
@@ -482,7 +504,7 @@ Use `$SERIES_VERSION` and `$SUBJECT_STEM` from Step 3a. If version > 1:
 1. Use the subject stem (already cleaned in Step 3a) to search for earlier
    versions on Patchwork:
    ```
-   WebFetch: https://patchwork.ozlabs.org/api/patches/?project=qemu-devel&q=<subject_stem>&order=-date&per_page=15
+   WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<subject_stem>&order=-date&per_page=15
    ```
 
 2. For each earlier version found, fetch its comments (7b) to understand:
@@ -497,7 +519,7 @@ Use `$SERIES_VERSION` and `$SUBJECT_STEM` from Step 3a. If version > 1:
 
 Also search lore for the earlier thread:
 ```
-WebFetch: https://lore.kernel.org/qemu-devel/?q=<subject-stem-keywords>&o=-1
+WebFetch: https://lore.kernel.org/$MAILING_LIST/?q=<subject-stem-keywords>&o=-1
 ```
 
 #### 7e: Related patches in the same subsystem
@@ -507,7 +529,7 @@ Identify the subsystem from modified file paths (e.g., `hw/i386/` →
 
 Search Patchwork for recent activity in the same area:
 ```
-WebFetch: https://patchwork.ozlabs.org/api/patches/?project=qemu-devel&q=<subsystem-keyword>&state=*&order=-date&per_page=10
+WebFetch: https://patchwork.ozlabs.org/api/patches/?project=$MAILING_LIST&q=<subsystem-keyword>&state=*&order=-date&per_page=10
 ```
 
 Focus on:
@@ -646,10 +668,11 @@ in multiple focused stages. Each stage targets a specific category of issues.
 This multi-stage approach (inspired by the sashiko kernel review system) reduces
 blind spots and improves issue detection.
 
-First, gather the basic diff information:
+First, gather the basic diff information. Use `$REVIEW_BASE` for local
+modes (commit/range), `<base_branch>` for remote modes (lore/msgid):
 
-1. `git log --oneline <base_branch>..$REVIEW_TIP`
-2. `git diff <base_branch>..$REVIEW_TIP --stat`
+1. `git log --oneline $REVIEW_BASE..$REVIEW_TIP`
+2. `git diff $REVIEW_BASE..$REVIEW_TIP --stat`
 3. `git show <hash>` for each commit
 
 Then execute the following review stages sequentially:
@@ -738,7 +761,7 @@ Review ALL findings from stages A–D and apply strict quality control:
 
 Run checkpatch on each patch:
 ```bash
-git format-patch <base_branch>..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
+git format-patch $REVIEW_BASE..$REVIEW_TIP -o /tmp/loupe-review-<timestamp>/checkpatch/
 ./scripts/checkpatch.pl /tmp/loupe-review-<timestamp>/checkpatch/*.patch
 ```
 
@@ -1034,7 +1057,7 @@ must conform to the loupe review schema v1:
     "date": "<submission date YYYY-MM-DD>",
     "subsystem": "<auto-inferred from patch file paths>",
     "message_id": "<original message-id>",
-    "lore_url": "https://lore.kernel.org/qemu-devel/<message-id>/",
+    "lore_url": "https://lore.kernel.org/$MAILING_LIST/<message-id>/",
     "patchwork_url": "<patchwork URL if found>",
     "base_branch": "<base branch>"
   },

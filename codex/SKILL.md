@@ -1,3 +1,8 @@
+---
+name: loupe-review
+description: LLM-assisted patch review with multi-agent cross-reference. Supports lore URLs, Message-Ids, subject search, local commits, and commit ranges.
+---
+
 # loupe-review
 
 LLM-assisted patch review with multi-agent cross-reference for mailing list patches.

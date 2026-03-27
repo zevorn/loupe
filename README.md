@@ -107,6 +107,17 @@ Review results from CI mode are published to [loupe-web](https://github.com/zevo
 - `codex` (optional, enables multi-agent modes)
 - QEMU source tree with `scripts/checkpatch.pl` (for style checking)
 
+## Acknowledgments
+
+The multi-stage review protocol (five-stage A-E analysis) and the static
+site design are inspired by [Sashiko](https://sashiko.dev/), an agentic
+Linux kernel code review system by the
+[Linux Foundation](https://www.linuxfoundation.org/)
+(Apache License 2.0, source: [github.com/sashiko-dev/sashiko](https://github.com/sashiko-dev/sashiko)).
+
+The review prompt design draws from the open-source
+[review-prompts](https://github.com/masoncl/review-prompts) by Chris Mason.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

@@ -831,7 +831,19 @@ Use `$SERIES_VERSION` and `$SUBJECT_STEM` from Step 3a. If version > 1:
    - Whether the current version addresses those concerns
    - Recurring issues across versions
 
-3. Cross-reference the `$CHANGELOG` (from Step 3a) against prior version
+3. For each earlier version, summarize the review outcome into a record:
+   - **Verdict**: needs_revision / ready_to_merge / blocked / no_review
+     (derive from reviewer comments — explicit R-b means ready; change
+     requests mean needs_revision; if no substantive feedback, no_review)
+   - **Findings distribution**: count of Critical / Major / Minor / Nit
+     issues raised by reviewers in that version's thread
+   - **Key reviewer(s)**: who provided substantive feedback
+   - **Resolution**: which concerns were addressed in the next version
+
+   Store these records in `$VERSION_REVIEW_HISTORY[]` for use in the
+   version history table (Step 11a) and JSON output (Step 12).
+
+4. Cross-reference the `$CHANGELOG` (from Step 3a) against prior version
    feedback: does the changelog claim to address the issues reviewers
    raised? Are there concerns from prior versions that the changelog does
    not mention?
@@ -1244,11 +1256,11 @@ only when `+zh` is passed.
 **Author**: <name>, **Patches**: <N>, **Base**: <branch>
 
 ### Version history
-| Ver | Date | # | Key change |
-|-----|------|---|------------|
-| v1  | ... | 8 | Initial post |
-| v2  | ... | 5 | Dropped foo per reviewer X |
-| vN  | ... | 7 | Current — added tests |
+| Ver | Date | # | Verdict | Findings (C/M/m/n) | Key change |
+|-----|------|---|---------|---------------------|------------|
+| v1  | ... | 8 | needs_revision | 1/3/2/0 | Initial post |
+| v2  | ... | 5 | needs_revision | 0/1/1/2 | Dropped foo per reviewer X |
+| vN  | ... | 7 | — | (current) | Current — added tests |
 
 ### Patchwork & ML context
 - **State**: new / under review / accepted
@@ -1430,6 +1442,17 @@ $REVIEWER_NAME
 ` ` `
 ```
 
+#### 11g: Print reply to terminal
+
+After writing the reply file, print its full content to the terminal so
+the user can see the review result directly without opening the file:
+
+```
+Review written to: ~/loupe/reply/<series-short-name>-<version>-reply.md
+
+<full content of reply.md>
+```
+
 ### Step 12: Generate structured JSON output (CI mode only)
 
 **If not `$CI_MODE`**: skip this step.
@@ -1460,7 +1483,10 @@ must conform to the loupe review schema v1:
       "version": 1,
       "date": "<date>",
       "message_id": "<msgid>",
-      "key_change": "<description>"
+      "key_change": "<description>",
+      "review_verdict": "<needs_revision/ready_to_merge/blocked/no_review>",
+      "findings": { "critical": 0, "major": 0, "minor": 0, "nit": 0 },
+      "key_reviewers": ["<name>"]
     }
   ],
 

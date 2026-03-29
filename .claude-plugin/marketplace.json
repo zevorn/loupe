@@ -1,0 +1,14 @@
+{
+  "name": "loupe",
+  "owner": {
+    "name": "zevorn"
+  },
+  "plugins": [
+    {
+      "name": "loupe",
+      "source": "./",
+      "description": "LLM-assisted patch review with multi-agent cross-reference. Supports lore URLs, Message-Ids, subject search, local commits, and commit ranges.",
+      "version": "1.0.0"
+    }
+  ]
+}

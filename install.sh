@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_FILE="${SCRIPT_DIR}/commands/loupe-review.md"
+SKILL_FILE="${SCRIPT_DIR}/commands/patch-review.md"
 
 CLAUDE_CMD_DIR="${HOME}/.claude/commands"
 CODEX_SKILL_DIR="${CODEX_HOME:-${HOME}/.codex}/skills/loupe"
@@ -30,8 +30,9 @@ EOF
 install_claude() {
     echo "Installing for Claude Code..."
     mkdir -p "${CLAUDE_CMD_DIR}"
-    cp "${SKILL_FILE}" "${CLAUDE_CMD_DIR}/loupe-review.md"
-    echo "  -> ${CLAUDE_CMD_DIR}/loupe-review.md"
+    mkdir -p "${CLAUDE_CMD_DIR}/loupe"
+    cp "${SKILL_FILE}" "${CLAUDE_CMD_DIR}/loupe/patch-review.md"
+    echo "  -> ${CLAUDE_CMD_DIR}/loupe/patch-review.md"
     echo "Done. Restart Claude Code to pick up the new command."
 }
 
@@ -39,17 +40,23 @@ install_codex() {
     echo "Installing for Codex..."
     mkdir -p "${CODEX_SKILL_DIR}"
     cp "${SCRIPT_DIR}/codex/SKILL.md" "${CODEX_SKILL_DIR}/SKILL.md"
-    cp "${SKILL_FILE}" "${CODEX_SKILL_DIR}/loupe-review.md"
+    cp "${SKILL_FILE}" "${CODEX_SKILL_DIR}/patch-review.md"
     echo "  -> ${CODEX_SKILL_DIR}/SKILL.md (Codex skill)"
-    echo "  -> ${CODEX_SKILL_DIR}/loupe-review.md (workflow reference)"
+    echo "  -> ${CODEX_SKILL_DIR}/patch-review.md (workflow reference)"
     echo "Done. Restart Codex to pick up the new skill."
 }
 
 uninstall() {
     echo "Uninstalling loupe..."
+    if [ -f "${CLAUDE_CMD_DIR}/loupe/patch-review.md" ]; then
+        rm "${CLAUDE_CMD_DIR}/loupe/patch-review.md"
+        rmdir "${CLAUDE_CMD_DIR}/loupe" 2>/dev/null || true
+        echo "  Removed ${CLAUDE_CMD_DIR}/loupe/patch-review.md"
+    fi
+    # Clean up legacy location
     if [ -f "${CLAUDE_CMD_DIR}/loupe-review.md" ]; then
         rm "${CLAUDE_CMD_DIR}/loupe-review.md"
-        echo "  Removed ${CLAUDE_CMD_DIR}/loupe-review.md"
+        echo "  Removed legacy ${CLAUDE_CMD_DIR}/loupe-review.md"
     fi
     if [ -d "${CODEX_SKILL_DIR}" ]; then
         rm -rf "${CODEX_SKILL_DIR}"

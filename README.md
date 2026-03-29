@@ -19,23 +19,27 @@ Supersedes [patch-review](https://github.com/zevorn/patch-review). Designed for 
 
 ## Installation
 
-### Claude Code (recommended)
+### Claude Code — plugin install (recommended)
 
-Clone the repo and install the skill file:
+In the Claude Code terminal:
+
+```
+/plugin marketplace add zevorn/loupe
+/plugin install loupe@loupe
+```
+
+After installation, `/loupe:patch-review` is available as a slash command:
+
+```
+/loupe:patch-review <lore-url-or-msgid-or-commit> [base_branch] [+zh] [--ci] [--output-json <path>]
+```
+
+### Claude Code — manual install
 
 ```bash
 git clone git@github.com:zevorn/loupe.git
 cd loupe
 ./install.sh --claude
-```
-
-This copies `loupe-review.md` to `~/.claude/commands/`, making
-`/loupe-review` available as a slash command.
-
-After installation, use in Claude Code:
-
-```
-/loupe-review <lore-url-or-msgid-or-commit> [base_branch] [+zh] [--ci] [--output-json <path>]
 ```
 
 ### Codex
@@ -49,6 +53,9 @@ cd loupe
 ### Uninstall
 
 ```bash
+# Plugin install
+/plugin uninstall loupe@loupe
+
 # Manual install
 ./install.sh --uninstall
 ```
@@ -78,11 +85,11 @@ cd loupe
 ### Examples
 
 ```
-/loupe-review https://lore.kernel.org/qemu-devel/20240101120000.12345-1-author@example.com/t.mbox.gz
-/loupe-review master..HEAD
-/loupe-review abc1234
-/loupe-review riscv iommu fix
-/loupe-review <msgid@domain> master --ci --output-json /tmp/review/
+/loupe:patch-review https://lore.kernel.org/qemu-devel/20240101120000.12345-1-author@example.com/t.mbox.gz
+/loupe:patch-review master..HEAD
+/loupe:patch-review abc1234
+/loupe:patch-review riscv iommu fix
+/loupe:patch-review <msgid@domain> master --ci --output-json /tmp/review/
 ```
 
 ## Review Modes

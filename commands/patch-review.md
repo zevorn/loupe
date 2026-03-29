@@ -1491,7 +1491,6 @@ must conform to the loupe review schema v1:
   ],
 
   "ml_context": {
-    "patchwork_state": "<state from Step 7a>",
     "reviewed_by": ["<R-b tags from Step 7b>"],
     "acked_by": ["<A-b tags from Step 7b>"],
     "ci_status": "<pass/fail/pending from Step 7a>",

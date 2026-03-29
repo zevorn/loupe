@@ -29,13 +29,13 @@ cd loupe
 ./install.sh --claude
 ```
 
-This copies `loupe-review.md` to `~/.claude/commands/`, making
-`/loupe-review` available as a slash command.
+This copies `patch-review.md` to `~/.claude/commands/loupe/`, making
+`/loupe:patch-review` available as a slash command.
 
 After installation, use in Claude Code:
 
 ```
-/loupe-review <lore-url-or-msgid-or-commit> [base_branch] [+zh] [--ci] [--output-json <path>]
+/loupe:patch-review <lore-url-or-msgid-or-commit> [base_branch] [+zh] [--ci] [--output-json <path>]
 ```
 
 ### Codex
@@ -78,11 +78,11 @@ cd loupe
 ### Examples
 
 ```
-/loupe-review https://lore.kernel.org/qemu-devel/20240101120000.12345-1-author@example.com/t.mbox.gz
-/loupe-review master..HEAD
-/loupe-review abc1234
-/loupe-review riscv iommu fix
-/loupe-review <msgid@domain> master --ci --output-json /tmp/review/
+/loupe:patch-review https://lore.kernel.org/qemu-devel/20240101120000.12345-1-author@example.com/t.mbox.gz
+/loupe:patch-review master..HEAD
+/loupe:patch-review abc1234
+/loupe:patch-review riscv iommu fix
+/loupe:patch-review <msgid@domain> master --ci --output-json /tmp/review/
 ```
 
 ## Review Modes

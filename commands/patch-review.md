@@ -1,9 +1,9 @@
 ---
-name: loupe-review
+name: patch-review
 description: Download, apply, and review mailing list patches with multi-agent cross-reference (Claude+Codex or dual-Codex). Supports lore URLs, Message-Ids, subject search, local commits, commit ranges. CI mode outputs structured JSON for automated pipelines. Use when the user asks to review a patch, review a mailing list submission, apply patches from lore, review a patch series, check a QEMU/Linux kernel patch, or analyze commit quality.
 ---
 
-# loupe-review: Download, apply, and review mailing list patches
+# patch-review: Download, apply, and review mailing list patches
 
 ## Arguments
 
@@ -336,7 +336,7 @@ curl -sL "https://lore.kernel.org/$MAILING_LIST/<message_id>/raw" \
     "error": "Failed to download patches for <message-id>",
     "message_id": "<message-id>",
     "generated_at": "<timestamp>",
-    "generator": "loupe-review v1.0"
+    "generator": "loupe:patch-review v1.0"
   }
   ```
   This ensures the CI pipeline can detect and handle failures without
@@ -1510,7 +1510,7 @@ must conform to the loupe review schema v1:
   },
 
   "generated_at": "<ISO 8601 timestamp>",
-  "generator": "loupe-review v1.0",
+  "generator": "loupe:patch-review v1.0",
   "disclaimer": "LLM-generated draft. Not an authoritative review."
 }
 ```

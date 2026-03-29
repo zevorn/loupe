@@ -1,9 +1,9 @@
 ---
-name: loupe-review
+name: patch-review
 description: LLM-assisted patch review with multi-agent cross-reference. Supports lore URLs, Message-Ids, subject search, local commits, and commit ranges.
 ---
 
-# loupe-review
+# patch-review
 
 LLM-assisted patch review with multi-agent cross-reference for mailing list patches.
 
@@ -19,14 +19,14 @@ Use this skill when the user asks to:
 
 ## How to Use
 
-When the user provides a patch source (lore URL, Message-Id, subject keywords, local commit, or commit range), follow the full review workflow defined in the loupe-review command file.
+When the user provides a patch source (lore URL, Message-Id, subject keywords, local commit, or commit range), follow the full review workflow defined in the patch-review command file.
 
 The user will specify the input in their message. Parse their request to determine:
 - **source**: lore URL, Message-Id, subject search keywords, local commit SHA, or commit range
 - **base_branch** (optional): branch to diff against, default `master`
 - **flags**: `+zh` for Chinese output, `--ci` for JSON output, `--base <branch>`, `--output-json <path>`
 
-Then execute the loupe-review workflow from `loupe-review.md` installed alongside this skill file.
+Then execute the patch-review workflow from `patch-review.md` installed alongside this skill file.
 
 ## Input Examples
 
@@ -45,5 +45,5 @@ This skill automatically detects the environment:
 
 ## Workflow Reference
 
-The complete review workflow is defined in `loupe-review.md`, installed
+The complete review workflow is defined in `patch-review.md`, installed
 alongside this skill file. Follow all steps as documented there.
